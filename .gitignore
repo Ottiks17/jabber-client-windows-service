@@ -1,0 +1,35 @@
+﻿# Python
+__pycache__/
+*.py[cod]
+*.class
+*.so
+.Python
+env/
+venv/
+.venv/
+*.egg-info/
+dist/
+build/
+
+# Логи и временные файлы
+logs/
+*.log
+*.bak
+*.backup
+
+# Конфиги с паролями (ВАЖНО!)
+config.yaml
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Windows
+Thumbs.db
+desktop.ini
+
+# Наши бэкапы
+*.real
+*.backup
