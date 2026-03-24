@@ -139,3 +139,17 @@ if __name__ == '__main__':
     print("Starting Jabber Client API server...")
     print("Open: http://localhost:5000")
     app.run(host='0.0.0.0', port=5000, debug=True)
+    
+if __name__ == '__main__':
+    import ssl
+    
+    # Проверяем наличие сертификатов
+    if os.path.exists('cert.pem') and os.path.exists('key.pem'):
+        # Запуск с HTTPS
+        context = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
+        context.load_cert_chain('cert.pem', 'key.pem')
+        app.run(host='0.0.0.0', port=5000, debug=True, ssl_context=context)
+    else:
+        # Запуск без HTTPS (только HTTP)
+        print("⚠️ SSL сертификаты не найдены. Запуск в HTTP режиме")
+        app.run(host='0.0.0.0', port=5000, debug=True)

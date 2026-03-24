@@ -594,22 +594,77 @@ class MainWindow:
             }
 
     def toggle_theme(self):
-        """Переключить тему"""
+
         self.is_dark = not self.is_dark
         self.set_theme(self.is_dark)
         self.save_theme()
-        
+    
+    # Сохраняем текущую страницу
+        current_page = None
+        for name, page in self.pages.items():
+            if page.winfo_ismapped():
+               current_page = name
+               break
+    
+    # Обновляем фон
         self.root.configure(bg=self.colors['bg'])
-        
+    
+    # Сохраняем значения полей
+        saved_values = {}
+        if hasattr(self, 'xmpp_server'):
+             saved_values['xmpp_server'] = self.xmpp_server.get()
+        if hasattr(self, 'xmpp_username'):
+            saved_values['xmpp_username'] = self.xmpp_username.get()
+        if hasattr(self, 'xmpp_password'):
+            saved_values['xmpp_password'] = self.xmpp_password.get()
+        if hasattr(self, 'rest_url'):
+            saved_values['rest_url'] = self.rest_url.get()
+        if hasattr(self, 'rest_key'):
+            saved_values['rest_key'] = self.rest_key.get()
+        if hasattr(self, 'oracle_enabled'):
+            saved_values['oracle_enabled'] = self.oracle_enabled.get()
+        if hasattr(self, 'rest_enabled'):
+            saved_values['rest_enabled'] = self.rest_enabled.get()
+    
+    # Удаляем все виджеты
         for widget in self.root.winfo_children():
             widget.destroy()
-        
+    
+    # Пересоздаем интерфейс
         self.setup_ui()
+    
+    # Восстанавливаем значения полей
+        if hasattr(self, 'xmpp_server') and 'xmpp_server' in saved_values:
+            self.xmpp_server.delete(0, tk.END)
+            self.xmpp_server.insert(0, saved_values['xmpp_server'])
+        if hasattr(self, 'xmpp_username') and 'xmpp_username' in saved_values:
+            self.xmpp_username.delete(0, tk.END)
+            self.xmpp_username.insert(0, saved_values['xmpp_username'])
+        if hasattr(self, 'xmpp_password') and 'xmpp_password' in saved_values:
+            self.xmpp_password.delete(0, tk.END)
+            self.xmpp_password.insert(0, saved_values['xmpp_password'])
+        if hasattr(self, 'rest_url') and 'rest_url' in saved_values:
+            self.rest_url.delete(0, tk.END)
+            self.rest_url.insert(0, saved_values['rest_url'])
+        if hasattr(self, 'rest_key') and 'rest_key' in saved_values:
+            self.rest_key.delete(0, tk.END)
+            self.rest_key.insert(0, saved_values['rest_key'])
+        if hasattr(self, 'oracle_enabled') and 'oracle_enabled' in saved_values:
+            self.oracle_enabled.set(saved_values['oracle_enabled'])
+        if hasattr(self, 'rest_enabled') and 'rest_enabled' in saved_values:
+            self.rest_enabled.set(saved_values['rest_enabled'])
+    
+    # Восстанавливаем страницу
+        if current_page and current_page in self.pages:
+            self.switch_page(current_page)
+    
+    # Пересоздаем привязку скролла
         self.setup_scroll_binding()
-        
+    
+    # Обновляем иконку в трее
         if self.tray_icon:
             self.tray_icon.icon = self.create_tray_image()
-        
+    
         self.show_notification(f"Тема: {'🌙 Темная' if self.is_dark else '☀️ Светлая'}", "success")
 
     def setup_scroll_binding(self):

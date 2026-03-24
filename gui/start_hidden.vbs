@@ -1,0 +1,1 @@
+CreateObject("WScript.Shell").Run "C:\Users\ZakovrashinAY\AppData\Local\Python\pythoncore-3.14-64\python.exe C:\Users\ZakovrashinAY\Desktop\jabber-client\gui\main_window.py", 0, False
