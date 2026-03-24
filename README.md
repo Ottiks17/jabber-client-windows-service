@@ -92,3 +92,17 @@ sc delete JabberXMPPClient
 ## Лицензия
 
 MIT
+# 🤖 Jabber Robot
+
+Автоматическая система отправки уведомлений через XMPP (Jabber)
+
+## 🚀 Быстрый старт
+
+### 1. Установка
+```bash
+# Скачайте проект
+git clone https://github.com/Ottiks17/jabber-client.git
+cd jabber-client
+
+# Запустите установщик
+INSTALL.bat

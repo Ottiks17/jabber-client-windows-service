@@ -16,6 +16,7 @@ import pystray
 from PIL import Image, ImageDraw
 import winsound
 import subprocess
+import json
 
 
 class RoundedButton(tk.Canvas):
@@ -111,12 +112,168 @@ class RoundedEntry(tk.Frame):
         self.entry.config(**kwargs)
 
 
+class SplashScreen:
+    """Анимация загрузки при старте приложения"""
+    def __init__(self):
+        self.root = tk.Tk()
+        self.root.overrideredirect(True)
+        
+        # Цвета
+        self.bg_color = "#6C5CE7"
+        self.accent_color = "#FFFFFF"
+        
+        # Размеры
+        self.width = 500
+        self.height = 350
+        
+        # Центрируем окно
+        screen_width = self.root.winfo_screenwidth()
+        screen_height = self.root.winfo_screenheight()
+        x = (screen_width - self.width) // 2
+        y = (screen_height - self.height) // 2
+        self.root.geometry(f"{self.width}x{self.height}+{x}+{y}")
+        
+        # Настройка окна
+        self.root.configure(bg=self.bg_color)
+        self.root.attributes('-topmost', True)
+        
+        self.create_window()
+        self.animation_progress = 0
+        self.animate()
+        
+    def create_window(self):
+        """Создание элементов окна загрузки"""
+        main_frame = tk.Frame(self.root, bg=self.bg_color)
+        main_frame.pack(expand=True, fill='both', padx=20, pady=20)
+        
+        # Анимированный робот
+        self.robot_label = tk.Label(main_frame, text="🤖", font=('Segoe UI', 80),
+                                    bg=self.bg_color, fg=self.accent_color)
+        self.robot_label.pack(pady=20)
+        
+        # Название
+        title = tk.Label(main_frame, text="Jabber Robot", 
+                        font=('Segoe UI', 28, 'bold'),
+                        bg=self.bg_color, fg=self.accent_color)
+        title.pack(pady=10)
+        
+        # Версия
+        version = tk.Label(main_frame, text="Версия 3.0", 
+                          font=('Segoe UI', 10),
+                          bg=self.bg_color, fg='#E0E0E0')
+        version.pack()
+        
+        # Прогресс-бар
+        self.progress = ttk.Progressbar(main_frame, mode='indeterminate', 
+                                        length=300)
+        self.progress.pack(pady=20)
+        self.progress.start(10)
+        
+        # Статус
+        self.status_label = tk.Label(main_frame, text="Инициализация...", 
+                                     font=('Segoe UI', 10),
+                                     bg=self.bg_color, fg='#E0E0E0')
+        self.status_label.pack(pady=5)
+        
+        # Стиль для прогресс-бара
+        style = ttk.Style()
+        style.theme_use('clam')
+        style.configure("TProgressbar", thickness=10, background=self.accent_color)
+    
+    def update_status(self, text):
+        """Обновление текста статуса"""
+        self.status_label.config(text=text)
+        self.root.update()
+    
+    def animate(self):
+        """Анимация робота"""
+        self.animation_progress += 1
+        if self.animation_progress < 30:
+            size = 80 + int(5 * (self.animation_progress % 10 - 5))
+            self.robot_label.config(font=('Segoe UI', size))
+            self.root.after(50, self.animate)
+    
+    def close(self):
+        """Закрыть окно загрузки"""
+        self.progress.stop()
+        self.root.destroy()
+
+
+class RecoveryManager:
+    """Управление автоматическим восстановлением после сбоя"""
+    
+    def __init__(self, recovery_file="logs/recovery.json"):
+        self.recovery_file = recovery_file
+        self.ensure_logs_dir()
+    
+    def ensure_logs_dir(self):
+        """Создание папки для логов"""
+        os.makedirs(os.path.dirname(self.recovery_file), exist_ok=True)
+    
+    def save_state(self, core_state):
+        """Сохранение состояния"""
+        state = {
+            'timestamp': datetime.now().isoformat(),
+            'version': '3.0',
+            'is_running': core_state.get('is_running', False),
+            'sources_enabled': core_state.get('sources_enabled', {}),
+            'last_message_id': core_state.get('last_message_id', None),
+            'last_check': datetime.now().isoformat()
+        }
+        
+        try:
+            with open(self.recovery_file, 'w', encoding='utf-8') as f:
+                json.dump(state, f, ensure_ascii=False, indent=2)
+            return True
+        except Exception as e:
+            print(f"Ошибка сохранения состояния: {e}")
+            return False
+    
+    def restore_state(self):
+        """Восстановление состояния после сбоя"""
+        try:
+            if os.path.exists(self.recovery_file):
+                with open(self.recovery_file, 'r', encoding='utf-8') as f:
+                    state = json.load(f)
+                
+                # Проверяем актуальность состояния (не старше 1 часа)
+                last_check = datetime.fromisoformat(state['last_check'])
+                if (datetime.now() - last_check).seconds < 3600:
+                    return state
+        except Exception as e:
+            print(f"Ошибка восстановления состояния: {e}")
+        
+        return None
+    
+    def clear_state(self):
+        """Очистка сохраненного состояния"""
+        try:
+            if os.path.exists(self.recovery_file):
+                os.remove(self.recovery_file)
+        except:
+            pass
+    
+    def get_recovery_info(self):
+        """Получить информацию о последнем восстановлении"""
+        state = self.restore_state()
+        if state:
+            return {
+                'has_recovery': True,
+                'timestamp': state['timestamp'],
+                'was_running': state['is_running']
+            }
+        return {'has_recovery': False}
+
+
 class MainWindow:
     def __init__(self):
         self.root = tk.Tk()
         self.root.title("Jabber Robot")
         self.root.geometry("1280x800")
-        self.root.protocol('WM_DELETE_WINDOW', self.hide_window)  # При закрытии - сворачиваем в трей
+        self.root.protocol('WM_DELETE_WINDOW', self.hide_window)
+        
+        # Устанавливаем иконку
+        self.setup_icon()
         
         # Загружаем сохраненную тему
         self.is_dark = self.load_theme()
@@ -129,6 +286,7 @@ class MainWindow:
         self.config = self.load_config()
         self.menu_window = None
         self.tray_icon = None
+        self.recovery = RecoveryManager()
         
         self.setup_ui()
         self.setup_scroll_binding()
@@ -139,8 +297,57 @@ class MainWindow:
         # Создаем иконку в трее
         self.setup_tray_icon()
         
+        # Восстанавливаем состояние после сбоя
+        self.auto_recovery()
+        
         # Запускаем сервис автоматически, если был запущен
         self.auto_start_service()
+
+    def setup_icon(self):
+        """Установка иконки приложения"""
+        icon_path = os.path.join(os.path.dirname(__file__), 'icon.ico')
+        if os.path.exists(icon_path):
+            try:
+                self.root.iconbitmap(icon_path)
+            except:
+                pass
+
+    def save_state_for_recovery(self):
+        """Сохранить состояние для восстановления"""
+        state = {
+            'is_running': self.core is not None and self.core.is_running,
+            'sources_enabled': {
+                'oracle': self.oracle_enabled.get(),
+                'rest': self.rest_enabled.get()
+            },
+            'last_message_id': getattr(self, 'last_message_id', None)
+        }
+        self.recovery.save_state(state)
+
+    def auto_recovery(self):
+        """Автоматическое восстановление после запуска"""
+        recovery_info = self.recovery.get_recovery_info()
+        
+        if recovery_info['has_recovery'] and recovery_info['was_running']:
+            result = messagebox.askyesno(
+                "Восстановление",
+                "Обнаружены несохраненные данные от предыдущего сеанса.\n"
+                "Восстановить состояние?"
+            )
+            
+            if result:
+                state = self.recovery.restore_state()
+                if state:
+                    # Восстанавливаем состояние
+                    if 'sources_enabled' in state:
+                        self.oracle_enabled.set(state['sources_enabled'].get('oracle', True))
+                        self.rest_enabled.set(state['sources_enabled'].get('rest', True))
+                    
+                    # Автоматически запускаем сервис
+                    self.start_service()
+            
+            # Очищаем состояние после восстановления
+            self.recovery.clear_state()
 
     def create_tray_image(self):
         """Создать иконку для системного трея"""
@@ -157,10 +364,12 @@ class MainWindow:
         """Настройка иконки в системном трее"""
         try:
             menu = pystray.Menu(
-                pystray.MenuItem("Показать окно", self.show_window),
-                pystray.MenuItem("Запустить сервис", self.start_service_from_tray),
-                pystray.MenuItem("Остановить сервис", self.stop_service_from_tray),
-                pystray.MenuItem("Выход", self.exit_app)
+                pystray.MenuItem("📨 Показать окно", self.show_window),
+                pystray.MenuItem("▶ Запустить сервис", self.start_service_from_tray),
+                pystray.MenuItem("⏹ Остановить сервис", self.stop_service_from_tray),
+                pystray.Menu.SEPARATOR,
+                pystray.MenuItem("❓ Помощь", self.show_help),
+                pystray.MenuItem("🚪 Выход", self.exit_app)
             )
             
             self.tray_icon = pystray.Icon("jabber_robot", self.create_tray_image(), "Jabber Robot", menu)
@@ -169,6 +378,29 @@ class MainWindow:
             threading.Thread(target=self.tray_icon.run, daemon=True).start()
         except Exception as e:
             print(f"Ошибка создания иконки в трее: {e}")
+
+    def show_help(self):
+        """Показать справку"""
+        help_text = """
+        🤖 Jabber Robot - Помощь
+        
+        Горячие клавиши:
+        Ctrl+Enter    - Отправить сообщение
+        Ctrl+Shift+S  - Показать окно
+        Ctrl+Shift+H  - Скрыть окно
+        Ctrl+Shift+Q  - Выход
+        Ctrl+R        - Обновить логи
+        Ctrl+S        - Сохранить настройки
+        
+        Функции:
+        • Автоматическая отправка сообщений из Oracle/REST
+        • Windows Service для фоновой работы
+        • Системный трей (сворачивается при закрытии)
+        • Автовосстановление после сбоя
+        • Светлая/темная тема
+        • Автозагрузка с Windows
+        """
+        messagebox.showinfo("Помощь", help_text)
 
     def show_window(self):
         """Показать главное окно"""
@@ -183,6 +415,10 @@ class MainWindow:
 
     def exit_app(self):
         """Полный выход из приложения"""
+        # Сохраняем состояние перед выходом
+        if self.core and self.core.is_running:
+            self.save_state_for_recovery()
+        
         if self.core:
             self.core.stop()
         if self.tray_icon:
@@ -232,7 +468,6 @@ class MainWindow:
         )
         
         if self.auto_start:
-            # Добавляем в автозагрузку
             try:
                 python_path = sys.executable
                 script_path = os.path.abspath(__file__)
@@ -243,7 +478,6 @@ class MainWindow:
                     f.write(f'''CreateObject("WScript.Shell").Run "{python_path} {script_path}", 0, False''')
                 
                 # Создаем ярлык
-                import winshell
                 from win32com.client import Dispatch
                 
                 shell = Dispatch('WScript.Shell')
@@ -256,7 +490,6 @@ class MainWindow:
             except Exception as e:
                 print(f"Ошибка добавления в автозагрузку: {e}")
         else:
-            # Удаляем из автозагрузки
             try:
                 if os.path.exists(startup_path):
                     os.remove(startup_path)
@@ -281,13 +514,11 @@ class MainWindow:
         status = "включена" if self.auto_start else "выключена"
         self.show_notification(f"Автозагрузка {status}", "success")
         
-        # Обновляем текст кнопки в меню
         if self.menu_window and self.menu_window.winfo_exists():
             self.update_menu_text()
 
     def update_menu_text(self):
         """Обновить текст в меню"""
-        # Просто пересоздаем меню
         if self.menu_window:
             self.menu_window.destroy()
             self.menu_window = None
@@ -368,21 +599,17 @@ class MainWindow:
         self.set_theme(self.is_dark)
         self.save_theme()
         
-        # Обновляем все виджеты
         self.root.configure(bg=self.colors['bg'])
         
-        # Пересоздаем интерфейс
         for widget in self.root.winfo_children():
             widget.destroy()
         
         self.setup_ui()
         self.setup_scroll_binding()
         
-        # Обновляем иконку в трее
         if self.tray_icon:
             self.tray_icon.icon = self.create_tray_image()
         
-        # Показываем уведомление
         self.show_notification(f"Тема: {'🌙 Темная' if self.is_dark else '☀️ Светлая'}", "success")
 
     def setup_scroll_binding(self):
@@ -440,6 +667,7 @@ class MainWindow:
         with open('config.yaml', 'w', encoding='utf-8') as f:
             yaml.dump(config, f, allow_unicode=True)
         self.show_notification("Настройки сохранены", "success")
+        self.save_state_for_recovery()
 
     def show_notification(self, message, type="info"):
         """Показать всплывающее уведомление"""
@@ -454,7 +682,6 @@ class MainWindow:
                  font=('Segoe UI', 11), padx=15, pady=12).pack()
         notif.after(2000, notif.destroy)
         
-        # Воспроизводим звук
         try:
             winsound.PlaySound("SystemAsterisk", winsound.SND_ASYNC)
         except:
@@ -953,6 +1180,7 @@ class MainWindow:
             if self.menu_window and self.menu_window.winfo_exists():
                 self.menu_status.config(text="Работает", fg=self.colors['online'])
             self.show_notification("Сервис запущен", "success")
+            self.save_state_for_recovery()
         except Exception as e:
             self.show_notification(f"Ошибка: {e}", "warning")
 
@@ -967,11 +1195,29 @@ class MainWindow:
         if self.menu_window and self.menu_window.winfo_exists():
             self.menu_status.config(text="Остановлен", fg=self.colors['offline'])
         self.show_notification("Сервис остановлен", "success")
+        self.save_state_for_recovery()
 
     def run(self):
         self.root.mainloop()
 
 
 if __name__ == "__main__":
+    # Показываем splash screen
+    splash = SplashScreen()
+    splash.update_status("Загрузка модулей...")
+    import time
+    time.sleep(0.5)
+    
+    splash.update_status("Проверка конфигурации...")
+    time.sleep(0.5)
+    
+    splash.update_status("Загрузка интерфейса...")
+    
+    # Создаем главное окно
     app = MainWindow()
+    
+    splash.update_status("Готово!")
+    time.sleep(0.3)
+    splash.close()
+    
     app.run()

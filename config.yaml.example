@@ -1,0 +1,31 @@
+# ========================================
+# JABBER ROBOT - КОНФИГУРАЦИЯ
+# ========================================
+
+# --- XMPP НАСТРОЙКИ (ОБЯЗАТЕЛЬНО) ---
+# Укажите данные вашего XMPP аккаунта
+xmpp:
+  server: "jabber.ru"                    # XMPP сервер
+  username: "your_login@jabber.ru"      # Ваш JID (логин@домен)
+  password: "your_password"              # Ваш пароль
+
+# --- ORACLE НАСТРОЙКИ (ОПЦИОНАЛЬНО) ---
+# Если не используете Oracle, просто оставьте enabled: false
+oracle:
+  enabled: true
+  # connection_string: "user/pass@localhost:1521/xe"  # Для реальной БД
+  # query: "SELECT * FROM outbox_messages WHERE status = 'NEW'"
+
+# --- REST API НАСТРОЙКИ (ОПЦИОНАЛЬНО) ---
+rest:
+  enabled: true
+  api_url: "http://localhost:5000/api/messages"
+  api_key: "your-api-key"
+
+# --- НАСТРОЙКИ ПРИЛОЖЕНИЯ ---
+app:
+  theme: "light"                         # light / dark
+  auto_start: false                      # Автозагрузка с Windows
+  notifications: true                    # Показывать уведомления
+  sound: true                            # Звуковые уведомления
+  minimize_to_tray: true                 # Сворачивать в трей
