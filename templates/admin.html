@@ -1,0 +1,728 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Jabber Admin Panel</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: #f0f2f5;
+            min-height: 100vh;
+        }
+        
+        /* Header */
+        .header {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 20px 30px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+        
+        .header h1 {
+            font-size: 24px;
+        }
+        
+        .header .user-info {
+            display: flex;
+            align-items: center;
+            gap: 20px;
+        }
+        
+        .logout-btn {
+            background: rgba(255,255,255,0.2);
+            color: white;
+            padding: 8px 16px;
+            border-radius: 8px;
+            text-decoration: none;
+            transition: background 0.3s;
+        }
+        
+        .logout-btn:hover {
+            background: rgba(255,255,255,0.3);
+        }
+        
+        /* Container */
+        .container {
+            max-width: 1400px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+        
+        /* Stats Grid */
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+            gap: 20px;
+            margin-bottom: 30px;
+        }
+        
+        .stat-card {
+            background: white;
+            border-radius: 15px;
+            padding: 20px;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+            transition: transform 0.2s;
+        }
+        
+        .stat-card:hover {
+            transform: translateY(-3px);
+            box-shadow: 0 5px 15px rgba(0,0,0,0.1);
+        }
+        
+        .stat-value {
+            font-size: 42px;
+            font-weight: bold;
+            color: #667eea;
+            margin-bottom: 10px;
+        }
+        
+        .stat-label {
+            color: #666;
+            font-size: 14px;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+        
+        .stat-trend {
+            margin-top: 10px;
+            font-size: 12px;
+            color: #4caf50;
+        }
+        
+        /* Charts */
+        .charts-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(400px, 1fr));
+            gap: 20px;
+            margin-bottom: 30px;
+        }
+        
+        .chart-card {
+            background: white;
+            border-radius: 15px;
+            padding: 20px;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+        }
+        
+        .chart-title {
+            font-size: 18px;
+            font-weight: bold;
+            margin-bottom: 15px;
+            color: #333;
+            border-left: 4px solid #667eea;
+            padding-left: 12px;
+        }
+        
+        canvas {
+            max-height: 300px;
+            width: 100%;
+        }
+        
+        /* Filters */
+        .filters {
+            background: white;
+            border-radius: 15px;
+            padding: 20px;
+            margin-bottom: 20px;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+        }
+        
+        .filters-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 15px;
+            margin-bottom: 15px;
+        }
+        
+        .filter-group {
+            display: flex;
+            flex-direction: column;
+        }
+        
+        .filter-group label {
+            font-size: 12px;
+            color: #666;
+            margin-bottom: 5px;
+            font-weight: bold;
+        }
+        
+        .filter-group input, .filter-group select {
+            padding: 8px 12px;
+            border: 1px solid #ddd;
+            border-radius: 8px;
+            font-size: 14px;
+        }
+        
+        .filter-group input:focus, .filter-group select:focus {
+            outline: none;
+            border-color: #667eea;
+        }
+        
+        .filter-actions {
+            display: flex;
+            gap: 10px;
+            align-items: flex-end;
+        }
+        
+        .btn {
+            padding: 8px 16px;
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+            font-size: 14px;
+            transition: all 0.3s;
+        }
+        
+        .btn-primary {
+            background: #667eea;
+            color: white;
+        }
+        
+        .btn-primary:hover {
+            background: #5a67d8;
+        }
+        
+        .btn-danger {
+            background: #f44336;
+            color: white;
+        }
+        
+        .btn-danger:hover {
+            background: #da190b;
+        }
+        
+        .btn-success {
+            background: #4caf50;
+            color: white;
+        }
+        
+        .btn-success:hover {
+            background: #45a049;
+        }
+        
+        .btn-secondary {
+            background: #6c757d;
+            color: white;
+        }
+        
+        .btn-secondary:hover {
+            background: #5a6268;
+        }
+        
+        /* Messages Table */
+        .messages-table {
+            background: white;
+            border-radius: 15px;
+            padding: 20px;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+            overflow-x: auto;
+        }
+        
+        .table-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 15px;
+            flex-wrap: wrap;
+            gap: 10px;
+        }
+        
+        table {
+            width: 100%;
+            border-collapse: collapse;
+        }
+        
+        th, td {
+            padding: 12px;
+            text-align: left;
+            border-bottom: 1px solid #ddd;
+        }
+        
+        th {
+            background: #f5f5f5;
+            font-weight: bold;
+            color: #333;
+            cursor: pointer;
+        }
+        
+        th:hover {
+            background: #e5e5e5;
+        }
+        
+        tr:hover {
+            background: #f9f9f9;
+        }
+        
+        .status-badge {
+            display: inline-block;
+            padding: 4px 8px;
+            border-radius: 12px;
+            font-size: 11px;
+            font-weight: bold;
+        }
+        
+        .status-sent {
+            background: #4caf50;
+            color: white;
+        }
+        
+        .status-delivered {
+            background: #2196f3;
+            color: white;
+        }
+        
+        .status-read {
+            background: #9c27b0;
+            color: white;
+        }
+        
+        .status-pending {
+            background: #ff9800;
+            color: white;
+        }
+        
+        .delete-btn {
+            background: none;
+            border: none;
+            color: #f44336;
+            cursor: pointer;
+            font-size: 18px;
+            padding: 4px 8px;
+            border-radius: 4px;
+        }
+        
+        .delete-btn:hover {
+            background: #ffebee;
+        }
+        
+        /* Pagination */
+        .pagination {
+            display: flex;
+            justify-content: center;
+            gap: 10px;
+            margin-top: 20px;
+        }
+        
+        .page-btn {
+            padding: 8px 12px;
+            border: 1px solid #ddd;
+            background: white;
+            cursor: pointer;
+            border-radius: 6px;
+            transition: all 0.3s;
+        }
+        
+        .page-btn:hover {
+            background: #f5f5f5;
+        }
+        
+        .page-btn.active {
+            background: #667eea;
+            color: white;
+            border-color: #667eea;
+        }
+        
+        /* Loading */
+        .loading {
+            text-align: center;
+            padding: 40px;
+            color: #666;
+        }
+        
+        /* Top Users */
+        .top-users {
+            list-style: none;
+        }
+        
+        .top-users li {
+            display: flex;
+            justify-content: space-between;
+            padding: 8px 0;
+            border-bottom: 1px solid #eee;
+        }
+        
+        .user-name {
+            font-weight: bold;
+            color: #333;
+        }
+        
+        .user-count {
+            color: #667eea;
+            font-weight: bold;
+        }
+        
+        /* Action Buttons */
+        .action-buttons {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 20px;
+        }
+        
+        @keyframes pulse {
+            0% { opacity: 1; }
+            50% { opacity: 0.5; }
+            100% { opacity: 1; }
+        }
+        
+        .live-indicator {
+            display: inline-block;
+            width: 8px;
+            height: 8px;
+            background: #4caf50;
+            border-radius: 50%;
+            animation: pulse 1s infinite;
+            margin-left: 10px;
+        }
+    </style>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+</head>
+<body>
+    <div class="header">
+        <h1>📊 Jabber Admin Panel <span class="live-indicator"></span></h1>
+        <div class="user-info">
+            <span>👤 Admin</span>
+            <a href="/logout" class="logout-btn">Выйти</a>
+        </div>
+    </div>
+    
+    <div class="container">
+        <!-- Stats Cards -->
+        <div class="stats-grid">
+            <div class="stat-card">
+                <div class="stat-value" id="totalMessages">0</div>
+                <div class="stat-label">Всего сообщений</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-value" id="sentMessages">0</div>
+                <div class="stat-label">Отправлено</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-value" id="deliveredMessages">0</div>
+                <div class="stat-label">Доставлено</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-value" id="readMessages">0</div>
+                <div class="stat-label">Прочитано</div>
+                <div class="stat-trend" id="successRate">Успех: 0%</div>
+            </div>
+        </div>
+        
+        <!-- Charts -->
+        <div class="charts-grid">
+            <div class="chart-card">
+                <div class="chart-title">📈 Сообщения по источникам</div>
+                <canvas id="sourceChart"></canvas>
+            </div>
+            <div class="chart-card">
+                <div class="chart-title">👥 Топ получателей</div>
+                <ul class="top-users" id="topUsersList">
+                    <li>Загрузка...</li>
+                </ul>
+            </div>
+        </div>
+        
+        <!-- Filters -->
+        <div class="filters">
+            <div class="filters-grid">
+                <div class="filter-group">
+                    <label>🔍 Поиск</label>
+                    <input type="text" id="searchInput" placeholder="Поиск по тексту...">
+                </div>
+                <div class="filter-group">
+                    <label>📌 Источник</label>
+                    <select id="sourceFilter">
+                        <option value="">Все</option>
+                        <option value="api">API</option>
+                        <option value="oracle">Oracle</option>
+                        <option value="rest">REST API</option>
+                        <option value="web_dashboard">Web Dashboard</option>
+                        <option value="gui_user">GUI</option>
+                    </select>
+                </div>
+                <div class="filter-group">
+                    <label>📊 Статус</label>
+                    <select id="statusFilter">
+                        <option value="">Все</option>
+                        <option value="pending">Ожидает</option>
+                        <option value="sent">Отправлено</option>
+                        <option value="delivered">Доставлено</option>
+                        <option value="read">Прочитано</option>
+                    </select>
+                </div>
+                <div class="filter-actions">
+                    <button class="btn btn-primary" onclick="applyFilters()">Применить</button>
+                    <button class="btn btn-secondary" onclick="resetFilters()">Сбросить</button>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Action Buttons -->
+        <div class="action-buttons">
+            <button class="btn btn-success" onclick="exportData('json')">📥 Экспорт JSON</button>
+            <button class="btn btn-success" onclick="exportData('csv')">📥 Экспорт CSV</button>
+            <button class="btn btn-danger" onclick="clearAllMessages()">🗑️ Очистить все логи</button>
+            <button class="btn btn-secondary" onclick="restartService()">🔄 Перезапустить службу</button>
+            <button class="btn btn-primary" onclick="refreshData()">🔄 Обновить</button>
+        </div>
+        
+        <!-- Messages Table -->
+        <div class="messages-table">
+            <div class="table-header">
+                <h3>📋 История сообщений</h3>
+                <span id="totalCount" style="color: #666;"></span>
+            </div>
+            <div id="messagesContainer">
+                <div class="loading">Загрузка сообщений...</div>
+            </div>
+            <div id="pagination" class="pagination"></div>
+        </div>
+    </div>
+    
+    <script>
+        let currentPage = 1;
+        let sourceChart = null;
+        let currentFilters = {
+            search: '',
+            source: '',
+            status: ''
+        };
+        
+        // Load stats
+        async function loadStats() {
+            try {
+                const response = await fetch('/api/admin/stats');
+                const data = await response.json();
+                
+                document.getElementById('totalMessages').textContent = data.total;
+                document.getElementById('sentMessages').textContent = data.sent;
+                document.getElementById('deliveredMessages').textContent = data.delivered;
+                document.getElementById('readMessages').textContent = data.read;
+                document.getElementById('successRate').textContent = `Успех: ${data.success_rate.toFixed(1)}%`;
+                
+                // Update source chart
+                if (sourceChart) {
+                    sourceChart.data.datasets[0].data = Object.values(data.by_source);
+                    sourceChart.data.labels = Object.keys(data.by_source);
+                    sourceChart.update();
+                }
+                
+                // Update top users
+                const topUsersList = document.getElementById('topUsersList');
+                topUsersList.innerHTML = '';
+                data.top_users.forEach(user => {
+                    const li = document.createElement('li');
+                    li.innerHTML = `<span class="user-name">${user[0]}</span><span class="user-count">${user[1]} сообщений</span>`;
+                    topUsersList.appendChild(li);
+                });
+                
+            } catch (error) {
+                console.error('Stats error:', error);
+            }
+        }
+        
+        // Load messages
+        async function loadMessages() {
+            try {
+                const params = new URLSearchParams({
+                    page: currentPage,
+                    per_page: 20,
+                    search: currentFilters.search,
+                    source: currentFilters.source,
+                    status: currentFilters.status
+                });
+                
+                const response = await fetch(`/api/admin/messages?${params}`);
+                const data = await response.json();
+                
+                document.getElementById('totalCount').textContent = `Всего: ${data.total} сообщений`;
+                
+                const container = document.getElementById('messagesContainer');
+                
+                if (!data.messages || data.messages.length === 0) {
+                    container.innerHTML = '<div class="loading">📭 Нет сообщений</div>';
+                    return;
+                }
+                
+                let html = '</table><thead>\\n<th>Тип</th><th>Отправитель</th><th>Получатель</th><th>Сообщение</th><th>Статус</th><th>Время</th><th>Действия</th>\\n</thead><tbody>';
+                
+                data.messages.forEach(msg => {
+                    let status = 'pending';
+                    let statusText = '⏳ Ожидает';
+                    if (msg.read_time) {
+                        status = 'read';
+                        statusText = '✅ Прочитано';
+                    } else if (msg.delivered_time) {
+                        status = 'delivered';
+                        statusText = '📬 Доставлено';
+                    } else if (msg.sent_time) {
+                        status = 'sent';
+                        statusText = '✈️ Отправлено';
+                    }
+                    
+                    const time = msg.sent_time ? new Date(msg.sent_time).toLocaleString() : '-';
+                    const text = msg.text.length > 50 ? msg.text.substring(0, 50) + '...' : msg.text;
+                    
+                    html += `\\n
+                        <td><span class="status-badge status-${status}">${msg.type}</span></td>
+                        <td>${escapeHtml(msg.sender)}</td>
+                        <td>${escapeHtml(msg.recipient)}</td>
+                        <td title="${escapeHtml(msg.text)}" style="max-width:300px; overflow:hidden; text-overflow:ellipsis;">${escapeHtml(text)}</td>
+                        <td><span class="status-badge status-${status}">${statusText}</span></td>
+                        <td>${time}</td>
+                        <td><button class="delete-btn" onclick="deleteMessage('${msg.id}')">🗑️</button></td>
+                    `;
+                });
+                
+                html += '</tbody> </table>';
+                container.innerHTML = html;
+                
+                // Update pagination
+                updatePagination(data.page, data.total_pages);
+                
+            } catch (error) {
+                console.error('Messages error:', error);
+                document.getElementById('messagesContainer').innerHTML = '<div class="loading">❌ Ошибка загрузки</div>';
+            }
+        }
+        
+        function escapeHtml(text) {
+            if (!text) return '';
+            const div = document.createElement('div');
+            div.textContent = text;
+            return div.innerHTML;
+        }
+        
+        function updatePagination(current, total) {
+            const pagination = document.getElementById('pagination');
+            if (total <= 1) {
+                pagination.innerHTML = '';
+                return;
+            }
+            
+            let html = '';
+            for (let i = 1; i <= Math.min(total, 10); i++) {
+                html += `<button class="page-btn ${i === current ? 'active' : ''}" onclick="goToPage(${i})">${i}</button>`;
+            }
+            pagination.innerHTML = html;
+        }
+        
+        function goToPage(page) {
+            currentPage = page;
+            loadMessages();
+        }
+        
+        function applyFilters() {
+            currentFilters.search = document.getElementById('searchInput').value;
+            currentFilters.source = document.getElementById('sourceFilter').value;
+            currentFilters.status = document.getElementById('statusFilter').value;
+            currentPage = 1;
+            loadMessages();
+        }
+        
+        function resetFilters() {
+            document.getElementById('searchInput').value = '';
+            document.getElementById('sourceFilter').value = '';
+            document.getElementById('statusFilter').value = '';
+            currentFilters = { search: '', source: '', status: '' };
+            currentPage = 1;
+            loadMessages();
+        }
+        
+        async function deleteMessage(messageId) {
+            if (!confirm('Удалить это сообщение?')) return;
+            
+            try {
+                const response = await fetch(`/api/admin/messages/${messageId}`, { method: 'DELETE' });
+                if (response.ok) {
+                    loadMessages();
+                    loadStats();
+                }
+            } catch (error) {
+                console.error('Delete error:', error);
+            }
+        }
+        
+        async function clearAllMessages() {
+            if (!confirm('⚠️ ВНИМАНИЕ! Это удалит все сообщения. Продолжить?')) return;
+            
+            try {
+                const response = await fetch('/api/admin/messages/clear', { method: 'POST' });
+                if (response.ok) {
+                    loadMessages();
+                    loadStats();
+                    alert('Все логи очищены');
+                }
+            } catch (error) {
+                console.error('Clear error:', error);
+            }
+        }
+        
+        async function exportData(format) {
+            window.open(`/api/admin/export?format=${format}`, '_blank');
+        }
+        
+        async function restartService() {
+            if (!confirm('Перезапустить Windows Service?')) return;
+            
+            try {
+                const response = await fetch('/api/admin/service/restart', { method: 'POST' });
+                if (response.ok) {
+                    alert('Служба перезапущена');
+                }
+            } catch (error) {
+                console.error('Restart error:', error);
+            }
+        }
+        
+        function refreshData() {
+            loadStats();
+            loadMessages();
+        }
+        
+        // Initialize chart
+        function initChart() {
+            const ctx = document.getElementById('sourceChart').getContext('2d');
+            sourceChart = new Chart(ctx, {
+                type: 'doughnut',
+                data: {
+                    labels: [],
+                    datasets: [{
+                        data: [],
+                        backgroundColor: ['#667eea', '#764ba2', '#f093fb', '#4facfe', '#43e97b']
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: true,
+                    plugins: {
+                        legend: {
+                            position: 'bottom'
+                        }
+                    }
+                }
+            });
+        }
+        
+        // Auto refresh every 30 seconds
+        setInterval(() => {
+            loadStats();
+            loadMessages();
+        }, 30000);
+        
+        // Initial load
+        initChart();
+        loadStats();
+        loadMessages();
+    </script>
+</body>
+</html>
