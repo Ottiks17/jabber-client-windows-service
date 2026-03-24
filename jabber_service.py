@@ -1,5 +1,4 @@
-﻿# -*- coding: utf-8 -*-
-import win32serviceutil
+﻿import win32serviceutil
 import win32service
 import win32event
 import servicemanager
@@ -19,7 +18,7 @@ from api.core import MessagingCore
 from api.logger import FileLogger
 from sources.oracle_source import OracleSource
 from sources.rest_source import RestSource
-from sender.xmpppy_sender import XmpppySender
+from sender.real_xmpp_sender import RealXmppSender  # ← ИСПРАВЛЕНО: используем RealXmppSender
 
 # Настройка логирования для службы
 log_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'logs')
@@ -37,7 +36,7 @@ logging.basicConfig(
 class JabberXMPPService(win32serviceutil.ServiceFramework):
     """Windows Service для Jabber клиента"""
     
-    # Обязательные атрибуты службы [citation:4][citation:10]
+    # Обязательные атрибуты службы
     _svc_name_ = "JabberXMPPClient"
     _svc_display_name_ = "Jabber XMPP Client Service"
     _svc_description_ = "Сервис для получения сообщений из Oracle и REST API и отправки их через XMPP"
@@ -45,7 +44,7 @@ class JabberXMPPService(win32serviceutil.ServiceFramework):
     def __init__(self, args):
         win32serviceutil.ServiceFramework.__init__(self, args)
         
-        # Событие для остановки службы [citation:5]
+        # Событие для остановки службы
         self.hWaitStop = win32event.CreateEvent(None, 0, 0, None)
         socket.setdefaulttimeout(60)
         
@@ -114,9 +113,9 @@ class JabberXMPPService(win32serviceutil.ServiceFramework):
                 ))
                 logging.info("REST API источник добавлен")
             
-            # XMPP отправитель
+            # XMPP отправитель - ИСПРАВЛЕНО: используем RealXmppSender
             xmpp_config = config.get('xmpp', {})
-            sender = XmpppySender(
+            sender = RealXmppSender(  # ← ИЗМЕНЕНО: XmpppySender → RealXmppSender
                 server=xmpp_config.get('server', 'localhost'),
                 username=xmpp_config.get('username', ''),
                 password=xmpp_config.get('password', '')
@@ -136,7 +135,7 @@ class JabberXMPPService(win32serviceutil.ServiceFramework):
             
             logging.info("Ядро запущено, ожидание команд...")
             
-            # Ожидаем сигнала остановки [citation:7]
+            # Ожидаем сигнала остановки
             while self.is_running:
                 # Проверяем событие остановки
                 rc = win32event.WaitForSingleObject(self.hWaitStop, 5000)  # 5 секунд таймаут
@@ -157,7 +156,7 @@ def main():
         servicemanager.PrepareToHostSingle(JabberXMPPService)
         servicemanager.StartServiceCtrlDispatcher()
     else:
-        # Обработка команд (install/start/stop/remove) [citation:10]
+        # Обработка команд (install/start/stop/remove)
         win32serviceutil.HandleCommandLine(JabberXMPPService)
 
 if __name__ == '__main__':

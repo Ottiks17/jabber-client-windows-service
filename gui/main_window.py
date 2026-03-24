@@ -3,12 +3,19 @@ from tkinter import ttk, scrolledtext, messagebox
 import yaml
 import threading
 import requests
+import os
+import sys
+import getpass
 from datetime import datetime
 from api.core import MessagingCore
 from sources.oracle_source import OracleSource
 from sources.rest_source import RestSource
-from sender.xmpp_sender import XmppSender
+from sender.real_xmpp_sender import RealXmppSender
 from api.logger import FileLogger
+import pystray
+from PIL import Image, ImageDraw
+import winsound
+import subprocess
 
 
 class RoundedButton(tk.Canvas):
@@ -85,7 +92,11 @@ class RoundedEntry(tk.Frame):
         super().__init__(parent, bg=parent['bg'], highlightthickness=0, bd=0)
         self.entry = tk.Entry(self, **kwargs)
         self.entry.pack(fill='both', expand=True, padx=2, pady=2)
-        self.configure(bg='#E8F0FE')
+        self.update_bg(parent['bg'])
+
+    def update_bg(self, bg_color):
+        self.configure(bg=bg_color)
+        self.entry.configure(bg=bg_color)
 
     def get(self):
         return self.entry.get()
@@ -105,41 +116,279 @@ class MainWindow:
         self.root = tk.Tk()
         self.root.title("Jabber Robot")
         self.root.geometry("1280x800")
-        self.root.configure(bg='#F5F7FA')
-
-        # Мягкая цветовая палитра
-        self.colors = {
-            'bg': '#F5F7FA',
-            'sidebar': '#FFFFFF',
-            'card': '#FFFFFF',
-            'message_bubble': '#E8F0FE',
-            'accent': '#6C5CE7',
-            'accent_hover': '#5F4FD6',
-            'success': '#00B894',
-            'success_hover': '#00A085',
-            'danger': '#FF7675',
-            'danger_hover': '#FF6B6B',
-            'text': '#2D3436',
-            'text_secondary': '#636E72',
-            'text_light': '#B2BEC3',
-            'border': '#DFE6E9',
-            'hover': '#F8F9FA',
-            'input_bg': '#F8F9FA',
-            'online': '#00B894',
-            'offline': '#B2BEC3'
-        }
-
+        self.root.protocol('WM_DELETE_WINDOW', self.hide_window)  # При закрытии - сворачиваем в трей
+        
+        # Загружаем сохраненную тему
+        self.is_dark = self.load_theme()
+        self.auto_start = self.load_auto_start_setting()
+        
+        # Устанавливаем цветовую схему
+        self.set_theme(self.is_dark)
+        
         self.core = None
         self.config = self.load_config()
         self.menu_window = None
+        self.tray_icon = None
+        
         self.setup_ui()
         self.setup_scroll_binding()
+        
+        # Настраиваем автозагрузку
+        self.setup_auto_start()
+        
+        # Создаем иконку в трее
+        self.setup_tray_icon()
+        
+        # Запускаем сервис автоматически, если был запущен
+        self.auto_start_service()
+
+    def create_tray_image(self):
+        """Создать иконку для системного трея"""
+        size = 64
+        image = Image.new('RGB', (size, size), self.colors['accent'] if not self.is_dark else '#6C5CE7')
+        draw = ImageDraw.Draw(image)
+        
+        # Рисуем букву J
+        draw.text((size//2-10, size//2-10), "JR", fill='white', font=None)
+        
+        return image
+
+    def setup_tray_icon(self):
+        """Настройка иконки в системном трее"""
+        try:
+            menu = pystray.Menu(
+                pystray.MenuItem("Показать окно", self.show_window),
+                pystray.MenuItem("Запустить сервис", self.start_service_from_tray),
+                pystray.MenuItem("Остановить сервис", self.stop_service_from_tray),
+                pystray.MenuItem("Выход", self.exit_app)
+            )
+            
+            self.tray_icon = pystray.Icon("jabber_robot", self.create_tray_image(), "Jabber Robot", menu)
+            
+            # Запускаем в отдельном потоке
+            threading.Thread(target=self.tray_icon.run, daemon=True).start()
+        except Exception as e:
+            print(f"Ошибка создания иконки в трее: {e}")
+
+    def show_window(self):
+        """Показать главное окно"""
+        self.root.deiconify()
+        self.root.lift()
+        self.root.focus_force()
+
+    def hide_window(self):
+        """Скрыть окно (свернуть в трей)"""
+        self.root.withdraw()
+        self.show_notification("Приложение свернуто в системный трей", "info")
+
+    def exit_app(self):
+        """Полный выход из приложения"""
+        if self.core:
+            self.core.stop()
+        if self.tray_icon:
+            self.tray_icon.stop()
+        self.root.quit()
+        self.root.destroy()
+        sys.exit(0)
+
+    def start_service_from_tray(self):
+        """Запуск сервиса из трея"""
+        self.root.after(0, self.start_service)
+
+    def stop_service_from_tray(self):
+        """Остановка сервиса из трея"""
+        self.root.after(0, self.stop_service)
+
+    def load_auto_start_setting(self):
+        """Загрузить настройку автозагрузки"""
+        try:
+            with open('config.yaml', 'r', encoding='utf-8') as f:
+                config = yaml.safe_load(f)
+                return config.get('auto_start', {}).get('enabled', False)
+        except:
+            return False
+
+    def save_auto_start_setting(self):
+        """Сохранить настройку автозагрузки"""
+        try:
+            with open('config.yaml', 'r', encoding='utf-8') as f:
+                config = yaml.safe_load(f) or {}
+        except:
+            config = {}
+        
+        if 'auto_start' not in config:
+            config['auto_start'] = {}
+        config['auto_start']['enabled'] = self.auto_start
+        
+        with open('config.yaml', 'w', encoding='utf-8') as f:
+            yaml.dump(config, f, allow_unicode=True)
+
+    def setup_auto_start(self):
+        """Настройка автозагрузки"""
+        startup_path = os.path.join(
+            os.getenv('APPDATA'),
+            'Microsoft', 'Windows', 'Start Menu', 'Programs', 'Startup',
+            'JabberRobot.lnk'
+        )
+        
+        if self.auto_start:
+            # Добавляем в автозагрузку
+            try:
+                python_path = sys.executable
+                script_path = os.path.abspath(__file__)
+                
+                # Создаем VBS скрипт для скрытого запуска
+                vbs_path = os.path.join(os.path.dirname(script_path), 'start_hidden.vbs')
+                with open(vbs_path, 'w', encoding='utf-8') as f:
+                    f.write(f'''CreateObject("WScript.Shell").Run "{python_path} {script_path}", 0, False''')
+                
+                # Создаем ярлык
+                import winshell
+                from win32com.client import Dispatch
+                
+                shell = Dispatch('WScript.Shell')
+                shortcut = shell.CreateShortCut(startup_path)
+                shortcut.Targetpath = vbs_path
+                shortcut.WorkingDirectory = os.path.dirname(script_path)
+                shortcut.Save()
+                
+                print("✅ Добавлено в автозагрузку")
+            except Exception as e:
+                print(f"Ошибка добавления в автозагрузку: {e}")
+        else:
+            # Удаляем из автозагрузки
+            try:
+                if os.path.exists(startup_path):
+                    os.remove(startup_path)
+                print("✅ Удалено из автозагрузки")
+            except Exception as e:
+                print(f"Ошибка удаления из автозагрузки: {e}")
+
+    def auto_start_service(self):
+        """Автоматический запуск сервиса при старте"""
+        try:
+            if self.auto_start:
+                self.start_service()
+        except Exception as e:
+            print(f"Ошибка автозапуска сервиса: {e}")
+
+    def toggle_auto_start(self):
+        """Переключить автозагрузку"""
+        self.auto_start = not self.auto_start
+        self.save_auto_start_setting()
+        self.setup_auto_start()
+        
+        status = "включена" if self.auto_start else "выключена"
+        self.show_notification(f"Автозагрузка {status}", "success")
+        
+        # Обновляем текст кнопки в меню
+        if self.menu_window and self.menu_window.winfo_exists():
+            self.update_menu_text()
+
+    def update_menu_text(self):
+        """Обновить текст в меню"""
+        # Просто пересоздаем меню
+        if self.menu_window:
+            self.menu_window.destroy()
+            self.menu_window = None
+            self.show_menu()
+
+    def load_theme(self):
+        """Загрузить сохраненную тему из конфига"""
+        try:
+            with open('config.yaml', 'r', encoding='utf-8') as f:
+                config = yaml.safe_load(f)
+                return config.get('theme', {}).get('dark', False)
+        except:
+            return False
+
+    def save_theme(self):
+        """Сохранить тему в конфиг"""
+        try:
+            with open('config.yaml', 'r', encoding='utf-8') as f:
+                config = yaml.safe_load(f) or {}
+        except:
+            config = {}
+        
+        if 'theme' not in config:
+            config['theme'] = {}
+        config['theme']['dark'] = self.is_dark
+        
+        with open('config.yaml', 'w', encoding='utf-8') as f:
+            yaml.dump(config, f, allow_unicode=True)
+
+    def set_theme(self, is_dark):
+        """Установить цветовую схему"""
+        if is_dark:
+            self.colors = {
+                'bg': '#1A1A2E',
+                'sidebar': '#16213E',
+                'card': '#0F3460',
+                'message_bubble': '#1A2A4A',
+                'accent': '#6C5CE7',
+                'accent_hover': '#5F4FD6',
+                'success': '#00B894',
+                'success_hover': '#00A085',
+                'danger': '#FF7675',
+                'danger_hover': '#FF6B6B',
+                'text': '#EEEEEE',
+                'text_secondary': '#AAAAAA',
+                'text_light': '#888888',
+                'border': '#2D2D3A',
+                'hover': '#2A2A3A',
+                'input_bg': '#1E2A3A',
+                'online': '#00B894',
+                'offline': '#6C6C7A'
+            }
+        else:
+            self.colors = {
+                'bg': '#F5F7FA',
+                'sidebar': '#FFFFFF',
+                'card': '#FFFFFF',
+                'message_bubble': '#E8F0FE',
+                'accent': '#6C5CE7',
+                'accent_hover': '#5F4FD6',
+                'success': '#00B894',
+                'success_hover': '#00A085',
+                'danger': '#FF7675',
+                'danger_hover': '#FF6B6B',
+                'text': '#2D3436',
+                'text_secondary': '#636E72',
+                'text_light': '#B2BEC3',
+                'border': '#DFE6E9',
+                'hover': '#F8F9FA',
+                'input_bg': '#F8F9FA',
+                'online': '#00B894',
+                'offline': '#B2BEC3'
+            }
+
+    def toggle_theme(self):
+        """Переключить тему"""
+        self.is_dark = not self.is_dark
+        self.set_theme(self.is_dark)
+        self.save_theme()
+        
+        # Обновляем все виджеты
+        self.root.configure(bg=self.colors['bg'])
+        
+        # Пересоздаем интерфейс
+        for widget in self.root.winfo_children():
+            widget.destroy()
+        
+        self.setup_ui()
+        self.setup_scroll_binding()
+        
+        # Обновляем иконку в трее
+        if self.tray_icon:
+            self.tray_icon.icon = self.create_tray_image()
+        
+        # Показываем уведомление
+        self.show_notification(f"Тема: {'🌙 Темная' if self.is_dark else '☀️ Светлая'}", "success")
 
     def setup_scroll_binding(self):
-        """Настройка скролла колесиком мыши для всех областей"""
+        """Настройка скролла колесиком мыши"""
         def on_mousewheel(event):
             widget = self.root.winfo_containing(event.x_root, event.y_root)
-
             while widget and widget != self.root:
                 if isinstance(widget, (tk.Text, scrolledtext.ScrolledText)):
                     widget.yview_scroll(int(-1 * (event.delta / 120)), "units")
@@ -148,7 +397,6 @@ class MainWindow:
                     widget.yview_scroll(int(-1 * (event.delta / 120)), "units")
                     return
                 widget = widget.master
-
         self.root.bind_all('<MouseWheel>', on_mousewheel)
 
     def load_config(self):
@@ -194,6 +442,7 @@ class MainWindow:
         self.show_notification("Настройки сохранены", "success")
 
     def show_notification(self, message, type="info"):
+        """Показать всплывающее уведомление"""
         notif = tk.Toplevel(self.root)
         notif.overrideredirect(True)
         bg_color = self.colors['success'] if type == "success" else self.colors['accent']
@@ -204,9 +453,14 @@ class MainWindow:
         tk.Label(notif, text=message, bg=bg_color, fg='white',
                  font=('Segoe UI', 11), padx=15, pady=12).pack()
         notif.after(2000, notif.destroy)
+        
+        # Воспроизводим звук
+        try:
+            winsound.PlaySound("SystemAsterisk", winsound.SND_ASYNC)
+        except:
+            pass
 
     def toggle_menu(self):
-        """Показать/скрыть выпадающее меню возле кнопки"""
         if self.menu_window and self.menu_window.winfo_exists():
             self.menu_window.destroy()
             self.menu_window = None
@@ -214,14 +468,13 @@ class MainWindow:
             self.show_menu()
 
     def show_menu(self):
-        """Показать выпадающее меню"""
         x = self.root.winfo_x() + 65
         y = self.root.winfo_y() + 55
 
         self.menu_window = tk.Toplevel(self.root)
         self.menu_window.overrideredirect(True)
         self.menu_window.configure(bg=self.colors['sidebar'], bd=1, relief='flat')
-        self.menu_window.geometry(f"220x280+{x}+{y}")
+        self.menu_window.geometry(f"220x360+{x}+{y}")
 
         # Аватар
         avatar_frame = tk.Frame(self.menu_window, bg=self.colors['sidebar'], height=80)
@@ -230,7 +483,7 @@ class MainWindow:
         avatar = tk.Canvas(avatar_frame, width=48, height=48,
                            bg='#E8F0FE', highlightthickness=0)
         avatar.pack(side='left')
-        avatar.create_oval(4, 4, 44, 44, fill='#6C5CE7', outline='')
+        avatar.create_oval(4, 4, 44, 44, fill=self.colors['accent'], outline='')
         avatar.create_text(24, 24, text="JR", fill='white', font=('Segoe UI', 14, 'bold'))
 
         user_info = tk.Frame(avatar_frame, bg=self.colors['sidebar'])
@@ -245,7 +498,6 @@ class MainWindow:
                                     bg=self.colors['sidebar'], fg=self.colors['text_light'])
         self.menu_status.pack(anchor='w')
 
-        # Разделитель
         separator = tk.Frame(self.menu_window, height=1, bg=self.colors['border'])
         separator.pack(fill='x', padx=15, pady=10)
 
@@ -267,6 +519,33 @@ class MainWindow:
             btn.pack(fill='x', padx=15, pady=2)
             btn.configure(command=lambda p=page: self.switch_page(p))
 
+        separator2 = tk.Frame(self.menu_window, height=1, bg=self.colors['border'])
+        separator2.pack(fill='x', padx=15, pady=10)
+
+        # Кнопка переключения темы
+        theme_text = "🌙 Темная тема" if not self.is_dark else "☀️ Светлая тема"
+        theme_btn = tk.Button(self.menu_window, text=theme_text,
+                              font=('Segoe UI', 12),
+                              bg=self.colors['sidebar'], fg=self.colors['text'],
+                              anchor='w', padx=15, pady=10,
+                              bd=0, relief='flat',
+                              cursor='hand2',
+                              activebackground=self.colors['hover'],
+                              command=self.toggle_theme)
+        theme_btn.pack(fill='x', padx=15, pady=2)
+
+        # Кнопка автозагрузки
+        auto_text = "✅ Автозагрузка" if self.auto_start else "⬜ Автозагрузка"
+        auto_btn = tk.Button(self.menu_window, text=auto_text,
+                             font=('Segoe UI', 12),
+                             bg=self.colors['sidebar'], fg=self.colors['text'],
+                             anchor='w', padx=15, pady=10,
+                             bd=0, relief='flat',
+                             cursor='hand2',
+                             activebackground=self.colors['hover'],
+                             command=self.toggle_auto_start)
+        auto_btn.pack(fill='x', padx=15, pady=2)
+
         # Версия внизу
         version_frame = tk.Frame(self.menu_window, bg=self.colors['sidebar'])
         version_frame.pack(side='bottom', fill='x', pady=15)
@@ -274,7 +553,6 @@ class MainWindow:
                  bg=self.colors['sidebar'], fg=self.colors['text_light'],
                  font=('Segoe UI', 10)).pack()
 
-        # Закрыть при клике вне меню
         def close_menu(event):
             if event.widget != self.menu_window and event.widget != self.menu_btn:
                 self.menu_window.destroy()
@@ -284,7 +562,6 @@ class MainWindow:
         self.root.bind('<Button-1>', close_menu)
 
     def switch_page(self, page_name):
-        """Переключение страниц"""
         for name, page in self.pages.items():
             page.pack_forget()
         self.pages[page_name].pack(fill='both', expand=True)
@@ -301,7 +578,7 @@ class MainWindow:
         top_bar.pack(fill='x')
         top_bar.pack_propagate(False)
 
-        # Кнопка меню (три палочки)
+        # Кнопка меню
         self.menu_btn = tk.Button(top_bar, text="☰", font=('Segoe UI', 22),
                                   bg=self.colors['bg'], fg=self.colors['text'],
                                   bd=0, cursor='hand2', relief='flat',
@@ -313,6 +590,15 @@ class MainWindow:
         tk.Label(top_bar, text="Jabber Robot",
                  font=('Segoe UI', 22, 'bold'),
                  bg=self.colors['bg'], fg=self.colors['text']).pack(side='left', padx=(15, 0))
+
+        # Кнопка переключения темы
+        theme_icon = "🌙" if not self.is_dark else "☀️"
+        theme_btn = tk.Button(top_bar, text=theme_icon, font=('Segoe UI', 16),
+                              bg=self.colors['bg'], fg=self.colors['text'],
+                              bd=0, cursor='hand2', relief='flat',
+                              activebackground=self.colors['hover'],
+                              command=self.toggle_theme)
+        theme_btn.pack(side='right', padx=(0, 10), pady=15)
 
         # Статус и кнопки справа
         right_frame = tk.Frame(top_bar, bg=self.colors['bg'])
@@ -328,7 +614,6 @@ class MainWindow:
                                     font=('Segoe UI', 11))
         self.status_text.pack(side='left', padx=(8, 15))
 
-        # Кнопки управления (округлые)
         self.start_btn = RoundedButton(right_frame, "Запустить", self.start_service,
                                        self.colors['success'], self.colors['success_hover'],
                                        width=100, height=32)
@@ -392,6 +677,7 @@ class MainWindow:
                  bg=self.colors['card'], fg=self.colors['text_secondary']).pack(anchor='w')
         self.xmpp_server = RoundedEntry(fields_frame)
         self.xmpp_server.entry.config(font=('Segoe UI', 11), bg=self.colors['input_bg'], relief='flat', bd=0)
+        self.xmpp_server.update_bg(self.colors['input_bg'])
         self.xmpp_server.pack(fill='x', pady=(5, 15))
         self.xmpp_server.insert(0, self.config['xmpp'].get('server', 'localhost'))
 
@@ -399,6 +685,7 @@ class MainWindow:
                  bg=self.colors['card'], fg=self.colors['text_secondary']).pack(anchor='w')
         self.xmpp_username = RoundedEntry(fields_frame)
         self.xmpp_username.entry.config(font=('Segoe UI', 11), bg=self.colors['input_bg'], relief='flat', bd=0)
+        self.xmpp_username.update_bg(self.colors['input_bg'])
         self.xmpp_username.pack(fill='x', pady=(5, 15))
         self.xmpp_username.insert(0, self.config['xmpp'].get('username', ''))
 
@@ -406,6 +693,7 @@ class MainWindow:
                  bg=self.colors['card'], fg=self.colors['text_secondary']).pack(anchor='w')
         self.xmpp_password = RoundedEntry(fields_frame)
         self.xmpp_password.entry.config(font=('Segoe UI', 11), bg=self.colors['input_bg'], relief='flat', bd=0, show="•")
+        self.xmpp_password.update_bg(self.colors['input_bg'])
         self.xmpp_password.pack(fill='x', pady=(5, 0))
         self.xmpp_password.insert(0, self.config['xmpp'].get('password', ''))
 
@@ -447,6 +735,7 @@ class MainWindow:
                  bg=self.colors['card'], fg=self.colors['text_secondary']).pack(anchor='w')
         self.rest_url = RoundedEntry(rest_frame)
         self.rest_url.entry.config(font=('Segoe UI', 11), bg=self.colors['input_bg'], relief='flat', bd=0)
+        self.rest_url.update_bg(self.colors['input_bg'])
         self.rest_url.pack(fill='x', pady=(5, 10))
         self.rest_url.insert(0, self.config['rest'].get('api_url', 'http://localhost:5000'))
 
@@ -454,10 +743,11 @@ class MainWindow:
                  bg=self.colors['card'], fg=self.colors['text_secondary']).pack(anchor='w')
         self.rest_key = RoundedEntry(rest_frame)
         self.rest_key.entry.config(font=('Segoe UI', 11), bg=self.colors['input_bg'], relief='flat', bd=0)
+        self.rest_key.update_bg(self.colors['input_bg'])
         self.rest_key.pack(fill='x', pady=(5, 0))
         self.rest_key.insert(0, self.config['rest'].get('api_key', ''))
 
-        # Кнопка сохранения (округлая)
+        # Кнопка сохранения
         save_btn = RoundedButton(sources_card, "Сохранить настройки", self.save_config,
                                  self.colors['accent'], self.colors['accent_hover'],
                                  width=150, height=36)
@@ -489,6 +779,7 @@ class MainWindow:
                  bg=self.colors['card'], fg=self.colors['text_secondary']).pack(anchor='w')
         self.send_recipient = RoundedEntry(fields_frame)
         self.send_recipient.entry.config(font=('Segoe UI', 12), bg=self.colors['input_bg'], relief='flat', bd=0)
+        self.send_recipient.update_bg(self.colors['input_bg'])
         self.send_recipient.pack(fill='x', pady=(5, 15))
         self.send_recipient.insert(0, "user@jabber.local")
 
@@ -496,6 +787,7 @@ class MainWindow:
                  bg=self.colors['card'], fg=self.colors['text_secondary']).pack(anchor='w')
         self.send_subject = RoundedEntry(fields_frame)
         self.send_subject.entry.config(font=('Segoe UI', 12), bg=self.colors['input_bg'], relief='flat', bd=0)
+        self.send_subject.update_bg(self.colors['input_bg'])
         self.send_subject.pack(fill='x', pady=(5, 15))
 
         tk.Label(fields_frame, text="Сообщение", font=('Segoe UI', 12, 'bold'),
@@ -646,7 +938,7 @@ class MainWindow:
                 sources.append(OracleSource())
             if self.rest_enabled.get():
                 sources.append(RestSource(api_url=self.rest_url.get(), api_key=self.rest_key.get()))
-            sender = XmppSender(server=self.xmpp_server.get(), username=self.xmpp_username.get(),
+            sender = RealXmppSender(server=self.xmpp_server.get(), username=self.xmpp_username.get(),
                                 password=self.xmpp_password.get())
             self.logger = FileLogger()
             self.core = MessagingCore(sources, sender, self.logger)
@@ -678,3 +970,8 @@ class MainWindow:
 
     def run(self):
         self.root.mainloop()
+
+
+if __name__ == "__main__":
+    app = MainWindow()
+    app.run()
