@@ -20,6 +20,10 @@ import json
 import pandas as pd
 from plyer import notification
 
+src_path = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+if src_path not in sys.path:
+    sys.path.insert(0, src_path)
+
 
 class RoundedButton(tk.Canvas):
     """Кастомная кнопка с закругленными углами"""

@@ -1,0 +1,16 @@
+@echo off
+chcp 65001 > nul
+title Jabber Robot - REST API
+color 0C
+
+echo ========================================
+echo    ?? JABBER ROBOT - REST API
+echo ========================================
+echo.
+
+echo ?????? REST API ??????? (???? 5000)...
+echo ???????? ? ????????: http://localhost:5000
+echo.
+python src\api_server.py
+
+pause
