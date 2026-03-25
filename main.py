@@ -10,7 +10,7 @@ from tkinter import messagebox
 # Добавляем путь к проекту
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
-from splash_screen import SplashScreen
+from utils.splash_screen import SplashScreen
 from gui.main_window import MainWindow
 from recovery_manager import RecoveryManager
 
