@@ -1,11 +1,16 @@
 ﻿import json
+import os
 from datetime import datetime
 from typing import List, Optional
 from .interfaces import ILogger
 from .models import Message, DeliveryReceipt, LogEntry
 
 class FileLogger(ILogger):
-    def __init__(self, log_file: str = "messages.log"):
+    def __init__(self, log_file: str = None):
+        if log_file is None:
+            # Путь к корню проекта (2 уровня вверх от api/logger.py)
+            root_dir = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+            log_file = os.path.join(root_dir, 'logs', 'messages.log')
         self.log_file = log_file
         self.logs: List[LogEntry] = []
         self._load_logs()
@@ -20,6 +25,8 @@ class FileLogger(ILogger):
             self.logs = []
             
     def _save_logs(self):
+        # Создаем папку если нет
+        os.makedirs(os.path.dirname(self.log_file), exist_ok=True)
         with open(self.log_file, 'w', encoding='utf-8') as f:
             json.dump([vars(log) for log in self.logs], f, ensure_ascii=False, indent=2, default=str)
             

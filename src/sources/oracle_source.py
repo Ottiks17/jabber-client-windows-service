@@ -12,9 +12,9 @@ class OracleSource(IMessageSource):
         
     def _create_test_messages(self):
         test_messages = [
-            ("system", "user1@jabber.local", "Привет! Это тестовое сообщение из Oracle"),
-            ("admin", "user2@jabber.local", "Hello! Test message from Oracle"),
-            ("bot", "user1@jabber.local", "Сообщение с цифрами 123 и знаками !@#"),
+            ("system", "vabber@jabber.fr", "Привет! Это тестовое сообщение из Oracle"),
+            ("admin", "vabber@jabber.fr", "Hello! Test message from Oracle"),
+            ("bot", "vabber@jabber.fr", "Сообщение с цифрами 123 и знаками !@#"),
         ]
         
         for sender, recipient, text in test_messages:

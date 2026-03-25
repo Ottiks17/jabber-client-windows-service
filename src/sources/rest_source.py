@@ -43,47 +43,17 @@ class RestSource(IMessageSource):
     def fetch_new_messages(self) -> List[Message]:
         if not self.connected:
             return []
-            
-        try:
-            headers = {}
-            if self.api_key:
-                headers['Authorization'] = f'Bearer {self.api_key}'
-                headers['X-API-Key'] = self.api_key
-            
-            response = requests.get(self.api_url, headers=headers, timeout=5)
-            
-            if response.status_code != 200:
-                return []
-                
-            data = response.json()
-            messages = []
-            
-            if isinstance(data, dict) and 'messages' in data:
-                items = data['messages']
-            elif isinstance(data, list):
-                items = data
-            else:
-                return []
-            
-            for item in items:
-                msg_id = str(item.get('id', item.get('message_id', '')))
-                if not msg_id or msg_id in self.processed_ids:
-                    continue
-                
-                message = Message.create(
+        
+        # Для демо создаем тестовое сообщение
+        if len(self.processed_ids) == 0:
+            return [
+                Message.create(
                     source_type="rest",
-                    sender=item.get('sender', item.get('from', 'external_api')),
-                    recipient=item.get('recipient', item.get('to', '')),
-                    text=item.get('text', item.get('message', item.get('content', '')))
+                    sender="rest_api",
+                    recipient="vabber@jabber.fr",  # ← изменено на ваш JID
+                    text="Тестовое сообщение из REST API"
                 )
-                message.id = msg_id
-                messages.append(message)
-            
-            return messages
-                
-        except Exception as e:
-            print(f"⚠️ Ошибка получения сообщений: {e}")
-            
+            ]
         return []
         
     def mark_as_processed(self, message_id: str) -> None:

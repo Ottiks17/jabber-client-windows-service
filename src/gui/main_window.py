@@ -269,9 +269,7 @@ class MainWindow:
         self.menu_window = None
         self.tray_icon = None
         self.recovery = RecoveryManager()
-        
-        # Windows Toast уведомления
-        self.toaster = None
+        self.last_message_count = 0
         
         self.setup_ui()
         self.setup_scroll_binding()
@@ -732,7 +730,7 @@ class MainWindow:
         self.menu_window = tk.Toplevel(self.root)
         self.menu_window.overrideredirect(True)
         self.menu_window.configure(bg=self.colors['sidebar'], bd=1, relief='flat')
-        self.menu_window.geometry(f"220x360+{x}+{y}")
+        self.menu_window.geometry(f"240x420+{x}+{y}")
 
         avatar_frame = tk.Frame(self.menu_window, bg=self.colors['sidebar'], height=80)
         avatar_frame.pack(fill='x', padx=15, pady=(15, 10))
@@ -762,6 +760,7 @@ class MainWindow:
             ("⚙️ Настройки", "settings"),
             ("✉️ Отправить", "send"),
             ("📋 Логи", "logs"),
+            ("👑 Администрирование", "admin"),
         ]
 
         for text, page in menu_items:
@@ -889,6 +888,10 @@ class MainWindow:
         logs_page = tk.Frame(self.content_area, bg=self.colors['bg'])
         self.pages['logs'] = logs_page
         self.setup_logs_page(logs_page)
+
+        admin_page = tk.Frame(self.content_area, bg=self.colors['bg'])
+        self.pages['admin'] = admin_page
+        self.setup_admin_page(admin_page)
 
         self.pages['settings'].pack(fill='both', expand=True)
 
@@ -1094,6 +1097,20 @@ class MainWindow:
                                    width=140, height=32)
         export_btn.pack(side='left', padx=5)
 
+        # Фильтр по статусу
+        filter_frame = tk.Frame(parent, bg=self.colors['bg'])
+        filter_frame.pack(fill='x', pady=(0, 10))
+
+        tk.Label(filter_frame, text="Фильтр по статусу:", bg=self.colors['bg'],
+                 fg=self.colors['text_secondary']).pack(side='left', padx=(0, 10))
+
+        self.status_filter = ttk.Combobox(filter_frame, 
+                                           values=["Все", "В обработке", "Отправлено", "Доставлено", "Прочитано"],
+                                           font=('Segoe UI', 10), state='readonly', width=15)
+        self.status_filter.set("Все")
+        self.status_filter.bind('<<ComboboxSelected>>', self.filter_by_status)
+        self.status_filter.pack(side='left')
+
         self.setup_log_search(parent)
 
         logs_frame = tk.Frame(parent, bg=self.colors['card'], relief='flat')
@@ -1135,6 +1152,56 @@ class MainWindow:
                                            bg=self.colors['bg'], fg=self.colors['accent'],
                                            font=('Segoe UI', 10))
         self.search_count_label.pack(side='left', padx=(10, 0))
+
+    def filter_by_status(self, event=None):
+        """Фильтрация логов по статусу"""
+        if not hasattr(self, 'logger'):
+            return
+        
+        selected = self.status_filter.get()
+        logs = self.logger.get_logs()
+        
+        filtered_logs = []
+        for log in logs:
+            if selected == "Все":
+                filtered_logs.append(log)
+            elif selected == "В обработке" and not log.sent_time:
+                filtered_logs.append(log)
+            elif selected == "Отправлено" and log.sent_time and not log.delivered_time:
+                filtered_logs.append(log)
+            elif selected == "Доставлено" and log.delivered_time and not log.read_time:
+                filtered_logs.append(log)
+            elif selected == "Прочитано" and log.read_time:
+                filtered_logs.append(log)
+        
+        self.log_text.delete(1.0, tk.END)
+        for log in reversed(filtered_logs[-200:]):
+            if log.read_time:
+                status = "👁️"
+            elif log.delivered_time:
+                status = "📬"
+            elif log.sent_time:
+                status = "✈️"
+            else:
+                status = "⏳"
+            
+            time_str = log.created_at.strftime('%Y-%m-%d %H:%M:%S') if log.created_at else '--:--'
+            
+            self.log_text.insert(tk.END, f"[{time_str}] ")
+            self.log_text.insert(tk.END, f"{status} ", (f"status_{status}",))
+            self.log_text.insert(tk.END, f"{log.message_type}: {log.sender} → {log.recipient}\n")
+            self.log_text.insert(tk.END, f"   📝 {log.text}\n")
+            self.log_text.insert(tk.END, f"   ✈️ Отправлено: {log.sent_time.strftime('%H:%M:%S') if log.sent_time else '—'}\n")
+            self.log_text.insert(tk.END, f"   📬 Доставлено: {log.delivered_time.strftime('%H:%M:%S') if log.delivered_time else '—'}\n")
+            self.log_text.insert(tk.END, f"   👁️ Прочитано: {log.read_time.strftime('%H:%M:%S') if log.read_time else '—'}\n")
+            self.log_text.insert(tk.END, f"{'─'*70}\n\n")
+        
+        self.log_text.tag_config("status_✈️", foreground="#F39C12")
+        self.log_text.tag_config("status_📬", foreground="#3498DB")
+        self.log_text.tag_config("status_👁️", foreground="#27AE60")
+        self.log_text.tag_config("status_⏳", foreground="#95A5A6")
+        
+        self.show_notification(f"Показано {len(filtered_logs)} сообщений", "info")
 
     def search_logs(self, event=None):
         if not hasattr(self, 'search_entry'):
@@ -1245,6 +1312,235 @@ class MainWindow:
         except Exception as e:
             self.show_notification(f"Ошибка экспорта: {e}", "warning")
 
+    def setup_admin_page(self, parent):
+        """Вкладка администрирования"""
+        
+        # Заголовок
+        tk.Label(parent, text="👑 Панель администратора",
+                 font=('Segoe UI', 24, 'bold'),
+                 bg=self.colors['bg'], fg=self.colors['text']).pack(anchor='w', pady=(0, 20))
+        
+        # Разделитель
+        separator = tk.Frame(parent, height=2, bg=self.colors['border'])
+        separator.pack(fill='x', pady=10)
+        
+        # ========== СТАТИСТИКА ==========
+        stats_frame = tk.LabelFrame(parent, text="📊 Статистика", 
+                                     bg=self.colors['card'], fg=self.colors['text'],
+                                     font=('Segoe UI', 12, 'bold'))
+        stats_frame.pack(fill='x', padx=10, pady=10)
+        
+        stats_grid = tk.Frame(stats_frame, bg=self.colors['card'])
+        stats_grid.pack(fill='x', padx=15, pady=15)
+        
+        stats_data = [
+            ("📨 Всего", "total", "#6C5CE7"),
+            ("✈️ Отправлено", "sent", "#F39C12"),
+            ("📬 Доставлено", "delivered", "#3498DB"),
+            ("👁️ Прочитано", "read", "#27AE60"),
+        ]
+        
+        self.admin_stats = {}
+        for i, (label, key, color) in enumerate(stats_data):
+            card = tk.Frame(stats_grid, bg=color, relief='flat', bd=0)
+            card.grid(row=0, column=i, padx=5, pady=5, sticky='nsew')
+            stats_grid.columnconfigure(i, weight=1)
+            
+            val = tk.Label(card, text="0", font=('Segoe UI', 20, 'bold'),
+                           bg=color, fg='white')
+            val.pack(pady=(10, 0))
+            
+            txt = tk.Label(card, text=label, font=('Segoe UI', 10),
+                           bg=color, fg='white')
+            txt.pack(pady=(0, 10))
+            
+            self.admin_stats[key] = val
+        
+        refresh_stats_btn = RoundedButton(stats_frame, "🔄 Обновить статистику", self.update_admin_stats,
+                                           self.colors['accent'], self.colors['accent_hover'],
+                                           width=150, height=32)
+        refresh_stats_btn.pack(pady=(0, 15))
+        
+        # ========== УПРАВЛЕНИЕ ЛОГАМИ ==========
+        logs_frame = tk.LabelFrame(parent, text="📁 Управление логами", 
+                                    bg=self.colors['card'], fg=self.colors['text'],
+                                    font=('Segoe UI', 12, 'bold'))
+        logs_frame.pack(fill='x', padx=10, pady=10)
+        
+        logs_inner = tk.Frame(logs_frame, bg=self.colors['card'])
+        logs_inner.pack(fill='x', padx=15, pady=15)
+        
+        self.logs_info = tk.Label(logs_inner, text="Логи хранятся в файле logs/messages.log",
+                                   bg=self.colors['card'], fg=self.colors['text_secondary'],
+                                   font=('Segoe UI', 10))
+        self.logs_info.pack(anchor='w', pady=5)
+        
+        logs_buttons = tk.Frame(logs_inner, bg=self.colors['card'])
+        logs_buttons.pack(fill='x', pady=10)
+        
+        clear_logs_btn = RoundedButton(logs_buttons, "🗑️ Очистить все логи", self.clear_all_logs,
+                                        self.colors['danger'], self.colors['danger_hover'],
+                                        width=140, height=32)
+        clear_logs_btn.pack(side='left', padx=5)
+        
+        export_logs_btn = RoundedButton(logs_buttons, "📥 Экспорт в Excel", self.export_logs_to_excel,
+                                         self.colors['success'], self.colors['success_hover'],
+                                         width=140, height=32)
+        export_logs_btn.pack(side='left', padx=5)
+        
+        # ========== УПРАВЛЕНИЕ СЛУЖБОЙ ==========
+        service_frame = tk.LabelFrame(parent, text="⚙️ Управление Windows Service", 
+                                       bg=self.colors['card'], fg=self.colors['text'],
+                                       font=('Segoe UI', 12, 'bold'))
+        service_frame.pack(fill='x', padx=10, pady=10)
+        
+        service_inner = tk.Frame(service_frame, bg=self.colors['card'])
+        service_inner.pack(fill='x', padx=15, pady=15)
+        
+        service_status_frame = tk.Frame(service_inner, bg=self.colors['card'])
+        service_status_frame.pack(fill='x', pady=5)
+        
+        tk.Label(service_status_frame, text="Статус службы:", 
+                 bg=self.colors['card'], fg=self.colors['text'],
+                 font=('Segoe UI', 10, 'bold')).pack(side='left')
+        
+        self.service_status_label = tk.Label(service_status_frame, text="Проверка...", 
+                                              bg=self.colors['card'], fg=self.colors['text_secondary'],
+                                              font=('Segoe UI', 10))
+        self.service_status_label.pack(side='left', padx=(10, 0))
+        
+        service_buttons = tk.Frame(service_inner, bg=self.colors['card'])
+        service_buttons.pack(fill='x', pady=10)
+        
+        install_service_btn = RoundedButton(service_buttons, "📦 Установить службу", self.install_service,
+                                             self.colors['success'], self.colors['success_hover'],
+                                             width=140, height=32)
+        install_service_btn.pack(side='left', padx=5)
+        
+        start_service_btn = RoundedButton(service_buttons, "▶ Запустить службу", self.start_service_cmd,
+                                           self.colors['accent'], self.colors['accent_hover'],
+                                           width=140, height=32)
+        start_service_btn.pack(side='left', padx=5)
+        
+        stop_service_btn = RoundedButton(service_buttons, "⏹ Остановить службу", self.stop_service_cmd,
+                                          self.colors['danger'], self.colors['danger_hover'],
+                                          width=140, height=32)
+        stop_service_btn.pack(side='left', padx=5)
+        
+        check_status_btn = RoundedButton(service_inner, "🔄 Проверить статус", self.check_service_status,
+                                          self.colors['accent'], self.colors['accent_hover'],
+                                          width=140, height=32)
+        check_status_btn.pack(pady=10)
+        
+        # ========== ИНФОРМАЦИЯ ==========
+        info_frame = tk.LabelFrame(parent, text="ℹ️ Информация", 
+                                    bg=self.colors['card'], fg=self.colors['text'],
+                                    font=('Segoe UI', 12, 'bold'))
+        info_frame.pack(fill='x', padx=10, pady=10)
+        
+        info_inner = tk.Frame(info_frame, bg=self.colors['card'])
+        info_inner.pack(fill='x', padx=15, pady=15)
+        
+        tk.Label(info_inner, text="Jabber Robot", 
+                 bg=self.colors['card'], fg=self.colors['accent'],
+                 font=('Segoe UI', 14, 'bold')).pack(anchor='w')
+        
+        tk.Label(info_inner, text="Версия: 3.0", 
+                 bg=self.colors['card'], fg=self.colors['text_secondary']).pack(anchor='w')
+        
+        tk.Label(info_inner, text="© 2026 Jabber Robot", 
+                 bg=self.colors['card'], fg=self.colors['text_secondary']).pack(anchor='w')
+        
+        # Обновляем статистику при загрузке
+        self.update_admin_stats()
+        self.check_service_status()
+
+    def update_admin_stats(self):
+        """Обновить статистику в админ-панели"""
+        if hasattr(self, 'logger'):
+            logs = self.logger.get_logs()
+            total = len(logs)
+            sent = sum(1 for l in logs if l.sent_time)
+            delivered = sum(1 for l in logs if l.delivered_time)
+            read = sum(1 for l in logs if l.read_time)
+            
+            self.admin_stats['total'].config(text=str(total))
+            self.admin_stats['sent'].config(text=str(sent))
+            self.admin_stats['delivered'].config(text=str(delivered))
+            self.admin_stats['read'].config(text=str(read))
+            
+            self.show_notification("Статистика обновлена", "success")
+
+    def clear_all_logs(self):
+        """Очистить все логи"""
+        if not messagebox.askyesno("Подтверждение", "Вы уверены, что хотите очистить все логи?\nЭто действие необратимо!"):
+            return
+        
+        try:
+            with open('logs/messages.log', 'w', encoding='utf-8') as f:
+                json.dump([], f)
+            
+            self.logger.logs = []
+            self.refresh_logs()
+            self.update_admin_stats()
+            
+            self.show_notification("Логи очищены", "success")
+        except Exception as e:
+            self.show_notification(f"Ошибка: {e}", "warning")
+
+    def install_service(self):
+        """Установить Windows Service"""
+        try:
+            result = subprocess.run(['python', 'src/jabber_service.py', 'install'], 
+                                    capture_output=True, text=True, cwd=os.path.dirname(os.path.abspath(__file__)))
+            if result.returncode == 0:
+                self.show_notification("Служба установлена", "success")
+            else:
+                self.show_notification(f"Ошибка: {result.stderr}", "warning")
+        except Exception as e:
+            self.show_notification(f"Ошибка: {e}", "warning")
+        self.check_service_status()
+
+    def start_service_cmd(self):
+        """Запустить Windows Service"""
+        try:
+            result = subprocess.run(['net', 'start', 'JabberXMPPClient'], 
+                                    capture_output=True, text=True)
+            if result.returncode == 0:
+                self.show_notification("Служба запущена", "success")
+            else:
+                self.show_notification(f"Ошибка: {result.stderr}", "warning")
+        except Exception as e:
+            self.show_notification(f"Ошибка: {e}", "warning")
+        self.check_service_status()
+
+    def stop_service_cmd(self):
+        """Остановить Windows Service"""
+        try:
+            result = subprocess.run(['net', 'stop', 'JabberXMPPClient'], 
+                                    capture_output=True, text=True)
+            if result.returncode == 0:
+                self.show_notification("Служба остановлена", "success")
+            else:
+                self.show_notification(f"Ошибка: {result.stderr}", "warning")
+        except Exception as e:
+            self.show_notification(f"Ошибка: {e}", "warning")
+        self.check_service_status()
+
+    def check_service_status(self):
+        """Проверить статус Windows Service"""
+        try:
+            result = subprocess.run(['sc', 'query', 'JabberXMPPClient'], 
+                                    capture_output=True, text=True)
+            if "RUNNING" in result.stdout:
+                self.service_status_label.config(text="🟢 Запущена", fg="#27AE60")
+            elif "STOPPED" in result.stdout:
+                self.service_status_label.config(text="🔴 Остановлена", fg="#E74C3C")
+            else:
+                self.service_status_label.config(text="⚪ Не установлена", fg="#95A5A6")
+        except:
+            self.service_status_label.config(text="⚪ Не установлена", fg="#95A5A6")
+
     def update_char_counter(self, event=None):
         text = self.send_text.get("1.0", tk.END).strip()
         count = len(text)
@@ -1310,13 +1606,37 @@ class MainWindow:
         self.root.after(5000, lambda: self.send_status.config(text=""))
 
     def refresh_logs(self):
+        """Обновить отображение логов с иконками статусов"""
         if hasattr(self, 'logger'):
             self.log_text.delete(1.0, tk.END)
-            for log in reversed(self.logger.get_logs()[-50:]):
-                status = "✓" if log.sent_time else "⏳"
-                time_str = log.created_at.strftime('%H:%M') if log.created_at else '--:--'
-                self.log_text.insert(tk.END,
-                                     f"[{time_str}] {status} {log.message_type}: {log.sender} → {log.recipient}\n   {log.text[:100]}\n\n")
+            for log in reversed(self.logger.get_logs()[-200:]):
+                if log.read_time:
+                    status = "👁️"
+                elif log.delivered_time:
+                    status = "📬"
+                elif log.sent_time:
+                    status = "✈️"
+                else:
+                    status = "⏳"
+            
+                time_str = log.created_at.strftime('%Y-%m-%d %H:%M:%S') if log.created_at else '--:--'
+            
+                delivered_str = log.delivered_time.strftime('%H:%M:%S') if log.delivered_time else '—'
+                read_str = log.read_time.strftime('%H:%M:%S') if log.read_time else '—'
+            
+                self.log_text.insert(tk.END, f"[{time_str}] ")
+                self.log_text.insert(tk.END, f"{status} ", (f"status_{status}",))
+                self.log_text.insert(tk.END, f"{log.message_type}: {log.sender} → {log.recipient}\n")
+                self.log_text.insert(tk.END, f"   📝 {log.text}\n")
+                self.log_text.insert(tk.END, f"   ✈️ Отправлено: {log.sent_time.strftime('%H:%M:%S') if log.sent_time else '—'}\n")
+                self.log_text.insert(tk.END, f"   📬 Доставлено: {delivered_str}\n")
+                self.log_text.insert(tk.END, f"   👁️ Прочитано: {read_str}\n")
+                self.log_text.insert(tk.END, f"{'─'*70}\n\n")
+        
+            self.log_text.tag_config("status_✈️", foreground="#F39C12")
+            self.log_text.tag_config("status_📬", foreground="#3498DB")
+            self.log_text.tag_config("status_👁️", foreground="#27AE60")
+            self.log_text.tag_config("status_⏳", foreground="#95A5A6")
 
     def start_service(self):
         try:

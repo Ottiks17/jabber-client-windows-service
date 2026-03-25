@@ -1,3 +1,6 @@
+#!/usr/bin/env python
+# -*- coding: utf-8 -*-
+
 """
 Тестовый скрипт для проверки реального XMPP подключения
 """
@@ -6,7 +9,9 @@ import sys
 import os
 import yaml
 
-sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+# Добавляем путь к папке src
+src_path = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'src')
+sys.path.insert(0, src_path)
 
 from sender.real_xmpp_sender import RealXmppSender
 from api.models import Message
@@ -18,9 +23,11 @@ def test_xmpp_connection():
     print("Тестирование XMPP подключения")
     print("=" * 50)
     
-    # Загружаем конфигурацию
+    # Загружаем конфигурацию из корня проекта
+    config_path = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'config.yaml')
+    
     try:
-        with open('config.yaml', 'r', encoding='utf-8') as f:
+        with open(config_path, 'r', encoding='utf-8') as f:
             config = yaml.safe_load(f)
     except:
         print("❌ Не найден файл config.yaml")
@@ -47,18 +54,18 @@ def test_xmpp_connection():
     print("\n🔌 Подключение...")
     if not sender.connect():
         print("\n❌ Не удалось подключиться!")
-        print(f"   Ошибка: {sender.last_error}")
+        print(f"   Ошибка: {sender.last_error if hasattr(sender, 'last_error') else 'Неизвестная ошибка'}")
         return
     
     print("\n✅ Подключение успешно!")
     
-    # Отправляем тестовое сообщение
+    # Отправляем тестовое сообщение себе
     print("\n📤 Отправка тестового сообщения...")
     
     test_message = Message.create(
         source_type="test",
         sender=username,
-        recipient=username,  # Отправляем себе
+        recipient=username,
         text="Тестовое сообщение от Jabber Robot! 🤖"
     )
     

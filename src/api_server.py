@@ -1,10 +1,6 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
 
-"""
-REST API for Jabber Client
-"""
-
 import os
 import sys
 from datetime import datetime
@@ -15,7 +11,7 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 from api.models import Message
 from api.logger import FileLogger
-from sender.xmpp_sender import XmppSender
+from sender.real_xmpp_sender import RealXmppSender
 
 app = Flask(__name__)
 CORS(app)
@@ -28,17 +24,19 @@ def get_sender():
     if sender is None:
         import yaml
         try:
-            with open('config.yaml', 'r', encoding='utf-8') as f:
+            config_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'config.yaml')
+            with open(config_path, 'r', encoding='utf-8') as f:
                 config = yaml.safe_load(f) or {}
             xmpp_config = config.get('xmpp', {})
-            sender = XmppSender(
-                server=xmpp_config.get('server', 'localhost'),
+            sender = RealXmppSender(
+                server=xmpp_config.get('server', 'jabber.fr'),
                 username=xmpp_config.get('username', ''),
                 password=xmpp_config.get('password', '')
             )
             sender.connect()
-        except:
-            sender = XmppSender()
+        except Exception as e:
+            print(f"Ошибка: {e}")
+            sender = RealXmppSender()
             sender.connect()
     return sender
 
@@ -139,17 +137,3 @@ if __name__ == '__main__':
     print("Starting Jabber Client API server...")
     print("Open: http://localhost:5000")
     app.run(host='0.0.0.0', port=5000, debug=True)
-    
-if __name__ == '__main__':
-    import ssl
-    
-    # Проверяем наличие сертификатов
-    if os.path.exists('cert.pem') and os.path.exists('key.pem'):
-        # Запуск с HTTPS
-        context = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
-        context.load_cert_chain('cert.pem', 'key.pem')
-        app.run(host='0.0.0.0', port=5000, debug=True, ssl_context=context)
-    else:
-        # Запуск без HTTPS (только HTTP)
-        print("⚠️ SSL сертификаты не найдены. Запуск в HTTP режиме")
-        app.run(host='0.0.0.0', port=5000, debug=True)
