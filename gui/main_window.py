@@ -17,6 +17,8 @@ from PIL import Image, ImageDraw
 import winsound
 import subprocess
 import json
+import pandas as pd
+from datetime import datetime, timedelta
 
 
 class RoundedButton(tk.Canvas):
@@ -599,17 +601,17 @@ class MainWindow:
         self.set_theme(self.is_dark)
         self.save_theme()
     
-    # Сохраняем текущую страницу
+        # Сохраняем текущую страницу
         current_page = None
         for name, page in self.pages.items():
             if page.winfo_ismapped():
                current_page = name
                break
     
-    # Обновляем фон
+        # Обновляем фон
         self.root.configure(bg=self.colors['bg'])
     
-    # Сохраняем значения полей
+        # Сохраняем значения полей
         saved_values = {}
         if hasattr(self, 'xmpp_server'):
              saved_values['xmpp_server'] = self.xmpp_server.get()
@@ -626,14 +628,14 @@ class MainWindow:
         if hasattr(self, 'rest_enabled'):
             saved_values['rest_enabled'] = self.rest_enabled.get()
     
-    # Удаляем все виджеты
+        # Удаляем все виджеты
         for widget in self.root.winfo_children():
             widget.destroy()
     
-    # Пересоздаем интерфейс
+        # Пересоздаем интерфейс
         self.setup_ui()
     
-    # Восстанавливаем значения полей
+        # Восстанавливаем значения полей
         if hasattr(self, 'xmpp_server') and 'xmpp_server' in saved_values:
             self.xmpp_server.delete(0, tk.END)
             self.xmpp_server.insert(0, saved_values['xmpp_server'])
@@ -654,14 +656,14 @@ class MainWindow:
         if hasattr(self, 'rest_enabled') and 'rest_enabled' in saved_values:
             self.rest_enabled.set(saved_values['rest_enabled'])
     
-    # Восстанавливаем страницу
+        # Восстанавливаем страницу
         if current_page and current_page in self.pages:
             self.switch_page(current_page)
     
-    # Пересоздаем привязку скролла
+        # Пересоздаем привязку скролла
         self.setup_scroll_binding()
     
-    # Обновляем иконку в трее
+        # Обновляем иконку в трее
         if self.tray_icon:
             self.tray_icon.icon = self.create_tray_image()
     
@@ -1119,27 +1121,189 @@ class MainWindow:
         quick_buttons.columnconfigure(1, weight=1)
 
     def setup_logs_page(self, parent):
+        """Страница логов с поиском и экспортом"""
+        # Заголовок
         tk.Label(parent, text="История сообщений",
                  font=('Segoe UI', 24, 'bold'),
                  bg=self.colors['bg'], fg=self.colors['text']).pack(anchor='w', pady=(0, 15))
 
+        # Панель инструментов
+        toolbar = tk.Frame(parent, bg=self.colors['bg'])
+        toolbar.pack(fill='x', pady=(0, 10))
+
+        # Кнопка обновления
+        refresh_btn = RoundedButton(toolbar, "🔄 Обновить", self.refresh_logs,
+                                    self.colors['accent'], self.colors['accent_hover'],
+                                    width=100, height=32)
+        refresh_btn.pack(side='left', padx=5)
+
+        # Кнопка экспорта в Excel
+        export_btn = RoundedButton(toolbar, "📊 Экспорт в Excel", self.export_logs_to_excel,
+                                   self.colors['success'], self.colors['success_hover'],
+                                   width=140, height=32)
+        export_btn.pack(side='left', padx=5)
+
+        # Панель поиска
+        self.setup_log_search(parent)
+
+        # Текстовое поле для логов
         logs_frame = tk.Frame(parent, bg=self.colors['card'], relief='flat')
         logs_frame.pack(fill='both', expand=True)
 
-        self.log_text = tk.Text(logs_frame, wrap=tk.WORD, font=('Segoe UI', 11),
+        self.log_text = tk.Text(logs_frame, wrap=tk.WORD, font=('Consolas', 11),
                                 bg=self.colors['card'], fg=self.colors['text'],
                                 insertbackground=self.colors['accent'],
                                 relief='flat', borderwidth=0, padx=20, pady=20)
         self.log_text.pack(fill='both', expand=True, side='left')
 
+        # Скроллбар
         scrollbar = ttk.Scrollbar(logs_frame, orient="vertical", command=self.log_text.yview)
         scrollbar.pack(side='right', fill='y')
         self.log_text.configure(yscrollcommand=scrollbar.set)
 
-        refresh_btn = RoundedButton(parent, "Обновить", self.refresh_logs,
-                                    self.colors['accent'], self.colors['accent_hover'],
-                                    width=100, height=32)
-        refresh_btn.pack(pady=(15, 0))
+    def setup_log_search(self, parent):
+        """Добавить поле поиска в логах"""
+        search_frame = tk.Frame(parent, bg=self.colors['bg'])
+        search_frame.pack(fill='x', padx=15, pady=(10, 5))
+
+        # Иконка поиска
+        search_icon = tk.Label(search_frame, text="🔍",
+                               bg=self.colors['bg'], fg=self.colors['text_secondary'],
+                               font=('Segoe UI', 12))
+        search_icon.pack(side='left')
+
+        # Поле ввода поиска
+        self.search_entry = tk.Entry(search_frame, font=('Segoe UI', 11),
+                                     bg=self.colors['input_bg'], fg=self.colors['text'],
+                                     relief='flat', bd=1)
+        self.search_entry.pack(side='left', fill='x', expand=True, padx=(5, 0))
+        self.search_entry.bind('<KeyRelease>', self.search_logs)
+
+        # Кнопка очистки
+        clear_btn = tk.Button(search_frame, text="✖",
+                              font=('Segoe UI', 10),
+                              bg=self.colors['bg'], fg=self.colors['text_secondary'],
+                              bd=0, cursor='hand2',
+                              command=self.clear_search)
+        clear_btn.pack(side='left', padx=(5, 0))
+
+        # Метка с количеством найденных
+        self.search_count_label = tk.Label(search_frame, text="",
+                                           bg=self.colors['bg'], fg=self.colors['accent'],
+                                           font=('Segoe UI', 10))
+        self.search_count_label.pack(side='left', padx=(10, 0))
+
+    def search_logs(self, event=None):
+        """Поиск по логам"""
+        if not hasattr(self, 'search_entry'):
+            return
+
+        query = self.search_entry.get().strip().lower()
+
+        if not hasattr(self, 'logger'):
+            return
+
+        if not query:
+            self.refresh_logs()
+            if hasattr(self, 'search_count_label'):
+                self.search_count_label.config(text="")
+            return
+
+        logs = self.logger.get_logs()
+        found_count = 0
+        self.log_text.delete(1.0, tk.END)
+
+        for log in reversed(logs[-500:]):
+            text_match = query in log.text.lower()
+            sender_match = query in log.sender.lower()
+            recipient_match = query in log.recipient.lower()
+            type_match = query in log.message_type.lower()
+
+            if text_match or sender_match or recipient_match or type_match:
+                found_count += 1
+                status = "✓" if log.sent_time else "⏳"
+                time_str = log.created_at.strftime('%H:%M:%S') if log.created_at else '--:--:--'
+
+                display_text = f"[{time_str}] {status} {log.message_type}: {log.sender} → {log.recipient}\n"
+                display_text += f"   📝 {log.text}\n\n"
+
+                self.log_text.insert(tk.END, display_text)
+
+        if hasattr(self, 'search_count_label'):
+            self.search_count_label.config(text=f"Найдено: {found_count}")
+
+    def clear_search(self):
+        """Очистить поиск"""
+        if hasattr(self, 'search_entry'):
+            self.search_entry.delete(0, tk.END)
+        self.refresh_logs()
+        if hasattr(self, 'search_count_label'):
+            self.search_count_label.config(text="")
+
+    def export_logs_to_excel(self):
+        """Экспорт логов в Excel файл"""
+        if not hasattr(self, 'logger'):
+            self.show_notification("Нет данных для экспорта", "warning")
+            return
+
+        logs = self.logger.get_logs()
+
+        if not logs:
+            self.show_notification("Нет сообщений для экспорта", "warning")
+            return
+
+        from tkinter import filedialog
+        filename = filedialog.asksaveasfilename(
+            defaultextension=".xlsx",
+            filetypes=[("Excel files", "*.xlsx"), ("All files", "*.*")],
+            initialfile=f"jabber_logs_{datetime.now().strftime('%Y%m%d_%H%M%S')}.xlsx"
+        )
+
+        if not filename:
+            return
+
+        try:
+            data = []
+            for log in logs:
+                data.append({
+                    'ID': log.id,
+                    'Тип': log.message_type,
+                    'Отправитель': log.sender,
+                    'Получатель': log.recipient,
+                    'Сообщение': log.text,
+                    'Создано': log.created_at.strftime('%Y-%m-%d %H:%M:%S') if log.created_at else '',
+                    'Отправлено': log.sent_time.strftime('%Y-%m-%d %H:%M:%S') if log.sent_time else '',
+                    'Доставлено': log.delivered_time.strftime('%Y-%m-%d %H:%M:%S') if log.delivered_time else '',
+                    'Прочитано': log.read_time.strftime('%Y-%m-%d %H:%M:%S') if log.read_time else ''
+                })
+
+            df = pd.DataFrame(data)
+
+            with pd.ExcelWriter(filename, engine='openpyxl') as writer:
+                df.to_excel(writer, sheet_name='Логи', index=False)
+
+                worksheet = writer.sheets['Логи']
+
+                for column in worksheet.columns:
+                    max_length = 0
+                    column_letter = column[0].column_letter
+                    for cell in column:
+                        try:
+                            if len(str(cell.value)) > max_length:
+                                max_length = len(str(cell.value))
+                        except:
+                            pass
+                    adjusted_width = min(max_length + 2, 50)
+                    worksheet.column_dimensions[column_letter].width = adjusted_width
+
+                from openpyxl.styles import Font
+                for cell in worksheet[1]:
+                    cell.font = Font(bold=True)
+
+            self.show_notification(f"Экспортировано в {filename}", "success")
+
+        except Exception as e:
+            self.show_notification(f"Ошибка экспорта: {e}", "warning")
 
     def update_char_counter(self, event=None):
         text = self.send_text.get("1.0", tk.END).strip()
