@@ -1,89 +1,44 @@
 @echo off
 chcp 65001 > nul
-title Jabber Robot - Запуск
+title Jabber Robot - ?????? ???? ????????
 color 0B
 
 echo ========================================
-echo    🤖 JABBER ROBOT - ЗАПУСК
+echo    ?? JABBER ROBOT - ?????? ???? ????????
 echo ========================================
 echo.
-echo Выберите режим запуска:
+
+echo [1/4] ?????? REST API ??????? (???? 5000)...
+start "Jabber Robot - API" python src\api_server.py
+timeout /t 2 /nobreak > nul
+
+echo [2/4] ?????? Web Dashboard (???? 8080)...
+start "Jabber Robot - Dashboard" python src\web_dashboard.py
+timeout /t 2 /nobreak > nul
+
+echo [3/4] ?????? GUI (??????? ????)...
+start "Jabber Robot - GUI" python main.py
+timeout /t 2 /nobreak > nul
+
+echo [4/4] ?????? Windows Service (??????? ??????)...
+net start JabberXMPPClient 2>nul
+if errorlevel 1 (
+    echo ?????? ?? ???????????. ??????????: python src\jabber_service.py install
+) else (
+    echo ?????? ????????
+)
+
 echo.
-echo   [1] 🖥️  GUI (основное приложение)
-echo   [2] 🌐  Web Dashboard (мониторинг)
-echo   [3] 📡  REST API сервер
-echo   [4] 📊  Админ панель
-echo   [5] 🚀  ВСЕ СЕРВИСЫ (GUI + API + Dashboard)
-echo   [6] 🔧  Windows Service (управление)
+echo ========================================
+echo    ? ??? ??????? ????????!
+echo ========================================
 echo.
-set /p choice="Ваш выбор (1-6): "
-
-if "%choice%"=="1" (
-    echo.
-    echo Запуск GUI...
-    start python main.py
-    goto end
-)
-if "%choice%"=="2" (
-    echo.
-    echo Запуск Web Dashboard...
-    start http://localhost:8080
-    start python web_dashboard.py
-    goto end
-)
-if "%choice%"=="3" (
-    echo.
-    echo Запуск REST API...
-    start http://localhost:5000
-    start python api_server.py
-    goto end
-)
-if "%choice%"=="4" (
-    echo.
-    echo Запуск Админ панели...
-    start http://localhost:5001/admin
-    start python admin_panel.py
-    goto end
-)
-if "%choice%"=="5" (
-    echo.
-    echo Запуск всех сервисов...
-    start python main.py
-    timeout /t 2 /nobreak > nul
-    start python api_server.py
-    timeout /t 2 /nobreak > nul
-    start python web_dashboard.py
-    echo.
-    echo ✅ Все сервисы запущены!
-    echo    📱 GUI: открыто
-    echo    🌐 API: http://localhost:5000
-    echo    📊 Dashboard: http://localhost:8080
-    goto end
-)
-if "%choice%"=="6" (
-    echo.
-    echo Управление Windows Service
-    echo   [s] Запустить
-    echo   [t] Остановить
-    echo   [r] Перезапустить
-    echo   [u] Удалить
-    set /p sc_choice="Команда (s/t/r/u): "
-    if "%sc_choice%"=="s" net start JabberXMPPClient
-    if "%sc_choice%"=="t" net stop JabberXMPPClient
-    if "%sc_choice%"=="r" (
-        net stop JabberXMPPClient
-        timeout /t 3 /nobreak > nul
-        net start JabberXMPPClient
-    )
-    if "%sc_choice%"=="u" (
-        net stop JabberXMPPClient 2>nul
-        sc delete JabberXMPPClient
-    )
-    goto end
-)
-
-echo ❌ Неверный выбор!
-
-:end
+echo   REST API:      http://localhost:5000
+echo   Web Dashboard: http://localhost:8080
+echo   GUI:           ???????
+echo   Windows Service: ???????
+echo.
+echo ??? ????????? ???????? ???? GUI, API ? Dashboard
+echo ??? ????????? ??????: net stop JabberXMPPClient
 echo.
 pause
